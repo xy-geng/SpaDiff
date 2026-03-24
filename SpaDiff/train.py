@@ -8,11 +8,11 @@ import scanpy as sc
 import numpy as np
 import pandas as pd
 
-class spadiff(nn.Module):
+class DEC(nn.Module):
     def __init__(self, X, HL, node_width, device,args,
                  opt="adam",trajectory=[],trajectory_interval=50,
                  ):
-        super(spadiff, self).__init__()
+        super(DEC, self).__init__()
         
         self.X = X
         self.HL = HL
@@ -120,7 +120,7 @@ class spadiff(nn.Module):
         return y_pred, prob,z
 
 
-class spadiff_Multi(nn.Module):
+class DEC_Multi(nn.Module):
     def __init__(self, n_clusters, hidden_dim, alpha=1.0):
         super().__init__()
         self.n_clusters = n_clusters
@@ -169,25 +169,20 @@ class spadiff_Multi(nn.Module):
         
         for epoch in range(n_epochs):
             out = model((X_rna, X_atac), HL)
-
             z = out["z"]
             weight = out["weight"]
             X_rna_hat = out["rna_rec"]
             X_atac_hat = out["atac_rec"]
-
             # DEC loss
             q = self.soft_assign(z)
             p = self.target_distribution(q).detach()
             loss_dec = F.kl_div(q.log(), p, reduction="batchmean")
-
             # reconstruction loss
             loss_rna = F.mse_loss(X_rna_hat, X_rna)
             loss_atac = F.mse_loss(X_atac_hat, X_atac)
             loss_rec = loss_rna + loss_atac
-            
             # total loss
             loss = loss_dec + lambda_rec * loss_rec
-
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
