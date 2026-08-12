@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
 
@@ -32,7 +32,9 @@ def mclust_R(
 
     values = np.asarray(adata.obsm[used_obsm])
     components = min(pca_num, values.shape[0] - 1, values.shape[1])
-    embedding = PCA(n_components=components, random_state=random_seed).fit_transform(values)
+    embedding = PCA(n_components=components, random_state=random_seed).fit_transform(
+        values
+    )
     import rpy2.robjects as robjects
     import rpy2.robjects.numpy2ri
 
@@ -61,17 +63,26 @@ def tfidf(X):
     import scipy.sparse
 
     column_sum = np.asarray(X.sum(axis=0)).ravel()
-    idf = np.divide(X.shape[0], column_sum, out=np.zeros_like(column_sum, dtype=float), where=column_sum > 0)
+    idf = np.divide(
+        X.shape[0],
+        column_sum,
+        out=np.zeros_like(column_sum, dtype=float),
+        where=column_sum > 0,
+    )
     if scipy.sparse.issparse(X):
         row_sum = np.asarray(X.sum(axis=1)).ravel()
-        inv = np.divide(1.0, row_sum, out=np.zeros_like(row_sum, dtype=float), where=row_sum > 0)
+        inv = np.divide(
+            1.0, row_sum, out=np.zeros_like(row_sum, dtype=float), where=row_sum > 0
+        )
         return X.multiply(inv[:, None]).multiply(idf)
     row_sum = X.sum(axis=1, keepdims=True)
     tf = np.divide(X, row_sum, out=np.zeros_like(X, dtype=float), where=row_sum > 0)
     return tf * idf
 
 
-def lsi(adata, n_components: int = 20, use_highly_variable: Optional[bool] = None, **kwargs):
+def lsi(
+    adata, n_components: int = 20, use_highly_variable: Optional[bool] = None, **kwargs
+):
     """LSI retained from the original code with zero-variance protection."""
     import sklearn.preprocessing
     import sklearn.utils.extmath
@@ -79,14 +90,15 @@ def lsi(adata, n_components: int = 20, use_highly_variable: Optional[bool] = Non
     if use_highly_variable is None:
         use_highly_variable = "highly_variable" in adata.var
     adata_use = adata[:, adata.var["highly_variable"]] if use_highly_variable else adata
-    normalized = sklearn.preprocessing.Normalizer(norm="l1").fit_transform(tfidf(adata_use.X))
+    normalized = sklearn.preprocessing.Normalizer(norm="l1").fit_transform(
+        tfidf(adata_use.X)
+    )
     normalized = np.log1p(normalized * 1e4)
     values = sklearn.utils.extmath.randomized_svd(normalized, n_components, **kwargs)[0]
     values -= values.mean(axis=1, keepdims=True)
     scale = values.std(axis=1, ddof=1, keepdims=True)
     values = np.divide(values, scale, out=np.zeros_like(values), where=scale > 0)
     adata.obsm["X_lsi"] = values[:, 1:]
-
 
 
 def _adjust_clustering_resolution(
@@ -104,7 +116,8 @@ def _adjust_clustering_resolution(
     neighbors_key=None,
     clustering_kwargs=None,
 ):
-
+    """Tune a graph-clustering resolution toward a requested cluster count.
+    """
     import scanpy as sc
 
     if isinstance(target_n_clusters, bool) or not isinstance(
@@ -198,9 +211,7 @@ def _adjust_clustering_resolution(
 
     low_count = evaluate(res_low)
     if abs(low_count - target_n_clusters) > tolerance:
-        high_count = evaluate(res_high)
-    else:
-        high_count = low_count
+        evaluate(res_high)
 
     for _ in range(max_iterations):
         if best is not None and best[0][0] <= tolerance:
@@ -213,9 +224,9 @@ def _adjust_clustering_resolution(
         # resolution. The best visited solution is still retained if a backend
         # exhibits a small non-monotonic jump.
         if current_count < target_n_clusters:
-            res_low, low_count = current_res, current_count
+            res_low = current_res
         else:
-            res_high, high_count = current_res, current_count
+            res_high = current_res
 
     _, best_res, closest_n_clusters, best_labels = best
     adata.obs[key_added] = best_labels
@@ -232,7 +243,11 @@ def _adjust_clustering_resolution(
         ),
     }
     if verbose:
-        status = "target reached" if abs(closest_n_clusters - target_n_clusters) <= tolerance else "closest solution"
+        status = (
+            "target reached"
+            if abs(closest_n_clusters - target_n_clusters) <= tolerance
+            else "closest solution"
+        )
         print(
             f"Selected resolution={best_res:.6g}: {closest_n_clusters} clusters "
             f"({status})."
@@ -274,39 +289,3 @@ def adjust_louvain_resolution(
         neighbors_key=neighbors_key,
         clustering_kwargs=clustering_kwargs,
     )
-
-# def adjust_leiden_resolution(
-#     adata,
-#     target_n_clusters,
-#     use_rep="X_pca",
-#     key_added="leiden",
-#     n_neighbors=15,
-#     random_state=0,
-#     resolution_bounds=(0.01, 5.0),
-#     tolerance=0,
-#     max_iterations=25,
-#     verbose=True,
-#     neighbors_key=None,
-#     clustering_kwargs=None,
-# ):
-#     """Run Leiden while tuning resolution toward ``target_n_clusters``."""
-#     import scanpy as sc
-#
-#     if verbose:
-#         print(f"Adjusting Leiden toward {target_n_clusters} clusters.")
-#     return _adjust_clustering_resolution(
-#         adata=adata,
-#         target_n_clusters=target_n_clusters,
-#         clustering_func=sc.tl.leiden,
-#         key_added=key_added,
-#         use_rep=use_rep,
-#         n_neighbors=n_neighbors,
-#         random_state=random_state,
-#         resolution_bounds=resolution_bounds,
-#         tolerance=tolerance,
-#         max_iterations=max_iterations,
-#         verbose=verbose,
-#         neighbors_key=neighbors_key,
-#         clustering_kwargs=clustering_kwargs,
-#     )
-

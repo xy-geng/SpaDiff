@@ -10,7 +10,7 @@ The rapid growth of spatial transcriptomics (ST) and spatial multi-omics calls f
 
 # Getting started
 
-See Documentation and Tutorials.
+[![Documentation Status](https://readthedocs.org/projects/spadiff/badge/?version=latest)](https://spadiff.readthedocs.io/en/latest/)
 
 # Requirements
 

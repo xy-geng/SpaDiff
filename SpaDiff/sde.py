@@ -3,7 +3,7 @@
 Reference design:
 https://github.com/yang-song/score_sde_pytorch/blob/main/sde_lib.py
 
-This is a clean adaptation, not a verbatim copy. The important changes are
+This is an adaptation, not a verbatim copy. The important changes are
 two-dimensional broadcasting, condition-aware score closures, generator-aware
 sampling, and explicit reverse-SDE versus probability-flow-ODE semantics.
 """
@@ -11,8 +11,6 @@ sampling, and explicit reverse-SDE versus probability-flow-ODE semantics.
 from __future__ import annotations
 
 import abc
-# TUTORIAL-UNUSED: ``math`` was only used by the discrete predictor path.
-# import math
 from typing import Callable
 
 import torch
@@ -50,7 +48,6 @@ class SDE(abc.ABC):
     ) -> Tensor:
         raise NotImplementedError
 
-
     def reverse(self, score_fn: ScoreFn, probability_flow: bool = False):
         return ReverseSDE(self, score_fn, probability_flow)
 
@@ -75,11 +72,12 @@ class ReverseSDE:
         return drift, diffusion
 
 
-
 class VPSDE(SDE):
     """Variance-preserving SDE, the continuous limit of DDPM."""
 
-    def __init__(self, beta_min: float = 0.1, beta_max: float = 20.0, num_scales: int = 1000):
+    def __init__(
+        self, beta_min: float = 0.1, beta_max: float = 20.0, num_scales: int = 1000
+    ):
         super().__init__(num_scales)
         if not 0.0 < beta_min < beta_max:
             raise ValueError("require 0 < beta_min < beta_max")
@@ -89,7 +87,6 @@ class VPSDE(SDE):
             )
         self.beta_min = beta_min
         self.beta_max = beta_max
-
 
     @property
     def T(self) -> float:
@@ -109,6 +106,7 @@ class VPSDE(SDE):
         std = (1.0 - (2.0 * log_mean).exp()).clamp_min(0.0).sqrt()
         return mean, std
 
-    def prior_sampling(self, shape, *, device=None, dtype=None, generator=None) -> Tensor:
+    def prior_sampling(
+        self, shape, *, device=None, dtype=None, generator=None
+    ) -> Tensor:
         return torch.randn(shape, device=device, dtype=dtype, generator=generator)
-

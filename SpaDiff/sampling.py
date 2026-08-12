@@ -1,7 +1,6 @@
-
+"""Probability-flow sampler used by every tutorial."""
 
 from __future__ import annotations
-
 
 from typing import Optional
 
@@ -10,7 +9,6 @@ from torch import Tensor
 
 from .diffusion import make_score_fn
 from .sde import SDE
-
 
 
 @torch.no_grad()
@@ -28,6 +26,8 @@ def probability_flow_sample(
     eps: float = 1e-3,
     initial: Optional[Tensor] = None,
     start_time: float = 1.0,
+    use_topology_condition: bool = True,
+    use_batch_condition: bool = True,
 ) -> Tensor:
     """Deterministic Heun solver for the probability-flow ODE.
 
@@ -43,6 +43,8 @@ def probability_flow_sample(
         modality_ids,
         guidance_scale=guidance_scale,
         guidance_target=guidance_target,
+        use_topology_condition=use_topology_condition,
+        use_batch_condition=use_batch_condition,
     )
     rsde = sde.reverse(score_fn, probability_flow=True)
     x = (

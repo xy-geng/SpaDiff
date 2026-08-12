@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-# TUTORIAL-UNUSED: simplex enumeration is incremental and never calls combinations.
-# from itertools import combinations
 from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
@@ -87,14 +85,55 @@ def normalized_node_simplex_operator(
     return (d_inv @ incidence @ incidence.T @ d_inv / simplex_size).tocsr()
 
 
-def build_simplicial_operators(adjacency, max_order: int = 2):
-    """Build normalized node-node operators keyed by simplex order."""
+def build_simplicial_operators(
+    adjacency,
+    max_order: int = 2,
+    *,
+    verbose: bool = True,
+    return_counts: bool = False,
+):
+    """Build simplicial operators and report the number of simplices per order.
+
+    """
+    import scipy.sparse as sp
+
+    if max_order < 0:
+        raise ValueError("max_order must be non-negative")
+
     neighbors = _undirected_neighbors(adjacency)
-    simplices = enumerate_simplices(adjacency, max_order=max_order)
-    return {
-        order: normalized_node_simplex_operator(len(neighbors), values, order)
-        for order, values in simplices.items()
-    }
+    num_nodes = len(neighbors)
+    counts = {0: num_nodes}
+
+    if max_order == 0:
+        operators = {0: sp.identity(num_nodes, dtype=np.float32, format="csr")}
+    else:
+        simplices = enumerate_simplices(adjacency, max_order=max_order)
+        counts.update(
+            {order: len(simplices.get(order, [])) for order in range(1, max_order + 1)}
+        )
+        operators = {
+            order: normalized_node_simplex_operator(
+                num_nodes, simplices.get(order, []), order
+            )
+            for order in range(1, max_order + 1)
+        }
+
+    if verbose:
+        names = {
+            0: "vertices",
+            1: "edges",
+            2: "triangles",
+            3: "tetrahedra",
+            4: "4-simplices",
+        }
+        print("Simplicial complex statistics:")
+        for order in range(max_order + 1):
+            name = names.get(order, f"order-{order} simplices")
+            print(f"  order {order} ({name}): {counts.get(order, 0):,}")
+
+    if return_counts:
+        return operators, counts
+    return operators
 
 
 def scipy_to_torch_sparse(matrix, device=None):
@@ -111,4 +150,7 @@ def scipy_to_torch_sparse(matrix, device=None):
 
 def to_torch_operators(operators, device=None):
     """Convert an order-keyed scipy operator mapping to torch sparse tensors."""
-    return {order: scipy_to_torch_sparse(op, device=device) for order, op in operators.items()}
+    return {
+        order: scipy_to_torch_sparse(op, device=device)
+        for order, op in operators.items()
+    }

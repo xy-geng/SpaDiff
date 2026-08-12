@@ -1,29 +1,30 @@
-"""Higher-order encoders and preserved autoencoder components."""
+"""Higher-order topology encoder and technical objectives."""
 
 from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-import numpy as np
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
 
 def operator_matmul(operator: Tensor, x: Tensor) -> Tensor:
-    return torch.sparse.mm(operator, x) if operator.layout != torch.strided else operator @ x
+    return (
+        torch.sparse.mm(operator, x)
+        if operator.layout != torch.strided
+        else operator @ x
+    )
 
 
 def _get_operator(operators, order: int) -> Tensor:
     if isinstance(operators, Mapping):
         return operators[order]
-    # Corresponds to original SpaDiff_code/model.py: HiGCN.forward, where
-    # HL[1] is the edge operator and HL[2] is the triangle operator.
     return operators[order]
 
 
 class PolynomialPropagation(nn.Module):
-    """Manuscript Eq. (9)-(10), with an optional learnable legacy mode."""
+    """Polynomial higher-order propagation from manuscript Eq. (9)-(10)."""
 
     def __init__(self, steps: int, alpha: float, learnable: bool = False):
         super().__init__()
@@ -33,13 +34,12 @@ class PolynomialPropagation(nn.Module):
         self.steps = steps
         self.learnable = learnable
         if learnable:
-            # Corresponds to original HiGCN_prop.fW, but initialized so the
-            # endpoint follows manuscript Eq. (10), not alpha*(1-alpha)^L.
             self.logits = nn.Parameter(values.clamp_min(1e-12).log())
         else:
             self.register_buffer("coefficients", values)
 
     def forward(self, x: Tensor, operator: Tensor) -> Tensor:
+        # 模型组成：实现论文式 (9)-(10) 的多跳高阶邻域多项式传播。
         weights = F.softmax(self.logits, dim=0) if self.learnable else self.coefficients
         propagated = x
         result = weights[0] * x
@@ -50,7 +50,7 @@ class PolynomialPropagation(nn.Module):
 
 
 class TopologyEncoder(nn.Module):
-    """Multi-channel edge/triangle encoder corresponding to Eq. (8)-(11)."""
+    """Multi-channel edge/triangle encoder"""
 
     def __init__(
         self,
@@ -63,6 +63,8 @@ class TopologyEncoder(nn.Module):
         dropout: float = 0.1,
         projection_dropout: float | None = None,
         learnable_propagation: bool = False,
+        residual: bool = True,
+        output_normalization: str = "feature",
     ):
         super().__init__()
         self.orders = tuple(orders)
@@ -70,6 +72,12 @@ class TopologyEncoder(nn.Module):
         self.projection_dropout = (
             dropout if projection_dropout is None else projection_dropout
         )
+        self.output_normalization = output_normalization.lower()
+        if self.output_normalization not in {"none", "feature", "layer"}:
+            raise ValueError(
+                "output_normalization must be 'none', 'feature' or 'layer'"
+            )
+
         self.projections = nn.ModuleDict(
             {str(order): nn.Linear(input_dim, hidden_dim) for order in self.orders}
         )
@@ -79,377 +87,208 @@ class TopologyEncoder(nn.Module):
                 for order in self.orders
             }
         )
-        # Corresponds to original HiGCN.lin_out and manuscript Eq. (11).
         self.fusion = nn.Linear(len(self.orders) * hidden_dim, output_dim)
+        if residual:
+            if input_dim == output_dim:
+                self.residual_projection = nn.Identity()
+            else:
+                self.residual_projection = nn.Linear(input_dim, output_dim, bias=False)
+                nn.init.orthogonal_(self.residual_projection.weight)
+            nn.init.xavier_uniform_(self.fusion.weight, gain=0.1)
+            nn.init.zeros_(self.fusion.bias)
+        else:
+            self.residual_projection = None
+
+        self.layer_norm = (
+            nn.LayerNorm(output_dim) if self.output_normalization == "layer" else None
+        )
 
     def forward(self, features: Tensor, operators) -> Tensor:
+        # 每个单纯形阶数（边、三角形等）使用独立投影与传播通道。
         dropped = F.dropout(features, self.dropout, training=self.training)
         channels = []
         for order in self.orders:
             hidden = F.silu(self.projections[str(order)](dropped))
-            hidden = F.dropout(
-                hidden, self.projection_dropout, training=self.training
-            )
+            hidden = F.dropout(hidden, self.projection_dropout, training=self.training)
             channels.append(
                 self.propagations[str(order)](hidden, _get_operator(operators, order))
             )
-        return self.fusion(torch.cat(channels, dim=-1))
+        # 拼接所有阶的通道并线性融合，得到论文中的拓扑条件 H。
+        output = self.fusion(torch.cat(channels, dim=-1))
+        if self.residual_projection is not None:
+            output = output + self.residual_projection(features)
+        if self.output_normalization == "feature":
+            mean = output.mean(dim=0, keepdim=True)
+            variance = output.var(dim=0, keepdim=True, unbiased=False)
+            output = (output - mean) * torch.rsqrt(variance + 1e-5)
+        elif self.layer_norm is not None:
+            output = self.layer_norm(output)
+        return output
 
 
-class OriginalHiGCNPropagation(nn.Module):
-    """Exact propagation parameterization used by ``SpaDiff_code/model.py``.
+def technical_condition_ids(
+    batch_ids: Tensor, modality_ids: Tensor, num_modalities: int
+) -> Tensor:
 
-    In particular, the original implementation applies softmax to the raw
-    geometric coefficients, rather than to their logarithms.  Keeping that
-    behavior is necessary for the k2=0 reproduction endpoint.
+    if batch_ids.shape != modality_ids.shape:
+        raise ValueError("batch_ids and modality_ids must have identical shapes")
+    return batch_ids.long() * num_modalities + modality_ids.long()
+
+
+def balanced_mean(values: Tensor, group_ids: Tensor, enabled: bool = True) -> Tensor:
+    """Average groups equally so large slices do not dominate the objective."""
+
+    if values.ndim != 1 or group_ids.ndim != 1 or values.shape != group_ids.shape:
+        raise ValueError("values and group_ids must both have shape [N]")
+    if not enabled:
+        return values.mean()
+    groups = torch.unique(group_ids)
+    if groups.numel() == 0:
+        raise ValueError("cannot reduce an empty batch")
+    return torch.stack([values[group_ids == group].mean() for group in groups]).mean()
+
+
+class _GradientReversal(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, value: Tensor, strength: float) -> Tensor:
+        ctx.strength = float(strength)
+        return value.view_as(value)
+
+    @staticmethod
+    def backward(ctx, gradient: Tensor):
+        # 损失第 2 项：分类器按正常方向学习批次；拓扑编码器收到反向梯度，
+        # 从而尽量移除 H 中可识别批次/模态的信息。
+        return -ctx.strength * gradient, None
+
+
+def gradient_reverse(value: Tensor, strength: float = 1.0) -> Tensor:
+    return _GradientReversal.apply(value, strength)
+
+
+class TechnicalConditionObjective(nn.Module):
+    """Operational form of the SI q(b|x0) / p(b|H) alignment term.
+
     """
 
-    def __init__(self, steps: int, alpha: float):
-        super().__init__()
-        self.steps = steps
-        self.weights = nn.Parameter(torch.empty(steps + 1))
-        with torch.no_grad():
-            for step in range(steps + 1):
-                self.weights[step] = alpha * (1.0 - alpha) ** step
-
-    def forward(self, x: Tensor, operator: Tensor) -> Tensor:
-        weights = F.softmax(self.weights, dim=0)
-        result = weights[0] * x
-        propagated = x
-        for step in range(self.steps):
-            propagated = operator_matmul(operator, propagated)
-            result = result + weights[step + 1] * propagated
-        return result
-
-
-class OriginalHiGCNEncoder(nn.Module):
-    """HiGCN path matching the original single-modality DLPFC model."""
-
     def __init__(
         self,
-        input_dim: int,
+        data_dim: int,
+        topology_dim: int,
+        num_conditions: int,
         hidden_dim: int,
-        output_dim: int,
-        orders: Sequence[int] = (1, 2),
-        steps: int = 5,
-        alpha: float = 0.2,
-        dropout: float = 0.5,
-        projection_dropout: float = 0.2,
+        adversarial_strength: float = 1.0,
     ):
         super().__init__()
-        self.orders = tuple(orders)
-        self.dropout = dropout
-        self.projection_dropout = projection_dropout
-        self.projections = nn.ModuleDict()
-        self.propagations = nn.ModuleDict()
-        # Preserve the original construction order: Linear, propagation,
-        # Linear, propagation, ..., then the output Linear.
-        for order in self.orders:
-            self.projections[str(order)] = nn.Linear(input_dim, hidden_dim)
-            self.propagations[str(order)] = OriginalHiGCNPropagation(steps, alpha)
-        self.fusion = nn.Linear(len(self.orders) * hidden_dim, output_dim)
-
-    def forward(self, features: Tensor, operators) -> Tensor:
-        features = F.dropout(features, self.dropout, training=self.training)
-        channels = []
-        for order in self.orders:
-            hidden = self.projections[str(order)](features)
-            if self.projection_dropout > 0.0:
-                hidden = F.dropout(
-                    hidden, self.projection_dropout, training=self.training
-                )
-            channels.append(
-                self.propagations[str(order)](
-                    hidden, _get_operator(operators, order)
-                )
+        self.num_conditions = num_conditions
+        self.adversarial_strength = adversarial_strength
+        if num_conditions > 1:
+            self.data_posterior = nn.Sequential(
+                nn.LayerNorm(data_dim),
+                nn.Linear(data_dim, hidden_dim),
+                nn.SiLU(),
+                nn.Linear(hidden_dim, num_conditions),
             )
-        return self.fusion(torch.cat(channels, dim=-1))
-
-
-class OriginalDECObjective(nn.Module):
-    """Corrected DEC objective with selectable KMeans/mclust initialization."""
-
-    def __init__(
-        self,
-        num_clusters: int,
-        embedding_dim: int,
-        alpha: float = 1.0,
-        init_method: str = "kmeans",
-        mclust_model_names: str = "EEE",
-        mclust_pca_dim: int = 30,
-    ):
-        super().__init__()
-
-        init_method = init_method.lower()
-
-        if init_method not in {"kmeans", "mclust"}:
-            raise ValueError(
-                "init_method must be either 'kmeans' or 'mclust', "
-                f"got {init_method!r}"
+            self.topology_predictor = nn.Sequential(
+                nn.LayerNorm(topology_dim),
+                nn.Linear(topology_dim, hidden_dim),
+                nn.SiLU(),
+                nn.Linear(hidden_dim, num_conditions),
             )
-        if num_clusters <= 0:
-            raise ValueError("num_clusters must be positive")
-        if embedding_dim <= 0:
-            raise ValueError("embedding_dim must be positive")
-        if alpha <= 0.0:
-            raise ValueError("alpha must be positive")
-        if mclust_pca_dim <= 0:
-            raise ValueError("mclust_pca_dim must be positive")
-        if not mclust_model_names:
-            raise ValueError("mclust_model_names cannot be empty")
-
-        self.num_clusters = num_clusters
-        self.embedding_dim = embedding_dim
-        self.alpha = alpha
-
-        self.init_method = init_method
-        self.mclust_model_names = mclust_model_names
-        self.mclust_pca_dim = mclust_pca_dim
-
-        # 修正原始 DEC 的缺陷：
-        # centers 在创建优化器前已经是 Parameter，因此会被优化器更新。
-        self.centers = nn.Parameter(
-            torch.empty(num_clusters, embedding_dim)
-        )
-        nn.init.xavier_uniform_(self.centers)
-
-        self.initialized = False
-
-    @torch.no_grad()
-    def initialize(
-        self,
-        embedding: Tensor,
-        random_state: int = 42,
-    ) -> Tensor:
-        """使用配置指定的 KMeans 或 mclust 初始化 DEC 中心。"""
-
-        array = embedding.detach().cpu().numpy()
-
-        if self.init_method == "kmeans":
-            labels, centers = self._initialize_kmeans(
-                array,
-                random_state=random_state,
-            )
-
-        elif self.init_method == "mclust":
-            labels, centers = self._initialize_mclust(
-                array,
-                random_state=random_state,
-            )
-
         else:
-            raise RuntimeError(
-                f"unsupported DEC initialization method: "
-                f"{self.init_method!r}"
-            )
+            self.data_posterior = None
+            self.topology_predictor = None
 
-        if centers.shape != (
-            self.num_clusters,
-            self.embedding_dim,
-        ):
-            raise RuntimeError(
-                "invalid DEC center shape after initialization: "
-                f"expected "
-                f"{(self.num_clusters, self.embedding_dim)}, "
-                f"got {centers.shape}"
-            )
-
-        self.centers.copy_(
-            torch.as_tensor(
-                centers,
-                device=embedding.device,
-                dtype=embedding.dtype,
-            )
-        )
-
-        self.initialized = True
-
-        return torch.as_tensor(
-            labels,
-            device=embedding.device,
-            dtype=torch.long,
-        )
-
-    def _initialize_kmeans(
+    def forward(
         self,
-        array: np.ndarray,
+        clean: Tensor,
+        topology: Tensor,
+        condition_ids: Tensor,
         *,
-        random_state: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """使用 KMeans 初始化类别和聚类中心。"""
+        balanced: bool = True,
+    ) -> dict[str, Tensor]:
+        zero = topology.sum() * 0.0
+        if self.num_conditions == 1:
+            return {
+                "alignment_loss": zero,
+                "posterior_loss": zero,
+                "posterior_accuracy": zero.detach(),
+                "topology_accuracy": zero.detach(),
+            }
 
-        from sklearn.cluster import KMeans
-
-        estimator = KMeans(
-            n_clusters=self.num_clusters,
-            n_init=10,
-            random_state=random_state,
-        )
-
-        labels = estimator.fit_predict(array).astype(
-            np.int64,
-            copy=False,
-        )
-
-        centers = np.asarray(
-            estimator.cluster_centers_,
-            dtype=array.dtype,
-        )
-
-        return labels, centers
-
-    def _initialize_mclust(
-        self,
-        array: np.ndarray,
-        *,
-        random_state: int,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """使用 R/mclust 初始化类别，再在原始嵌入空间计算中心。"""
-
-        from sklearn.decomposition import PCA
-
-        components = min(
-            self.mclust_pca_dim,
-            array.shape[0] - 1,
-            array.shape[1],
-        )
-
-        if components <= 0:
-            raise ValueError(
-                "mclust initialization requires at least two "
-                "samples and one embedding dimension"
-            )
-
-        embedding_pca = PCA(
-            n_components=components,
-            random_state=random_state,
-        ).fit_transform(array)
-
-
-        import rpy2.robjects as robjects
-        import rpy2.robjects.numpy2ri
-
-        robjects.r.library("mclust")
-        rpy2.robjects.numpy2ri.activate()
-        robjects.r["set.seed"](random_state)
-
-        result = robjects.r["Mclust"](
-            rpy2.robjects.numpy2ri.numpy2rpy(
-                embedding_pca
-            ),
-            self.num_clusters,
-            self.mclust_model_names,
-        )
-
-        # mclust 分类标签从 1 开始，转换成 0-based。
-        labels = (
-            np.asarray(
-                result[-2],
-                dtype=np.int64,
-            ).reshape(-1)
-            - 1
-        )
-
-        expected_labels = np.arange(
-            self.num_clusters,
-            dtype=np.int64,
-        )
-        actual_labels = np.unique(labels)
-
-        if not np.array_equal(
-            actual_labels,
-            expected_labels,
+        if (
+            condition_ids.min().item() < 0
+            or condition_ids.max().item() >= self.num_conditions
         ):
-            raise RuntimeError(
-                "mclust did not produce every requested cluster: "
-                f"expected={expected_labels.tolist()}, "
-                f"actual={actual_labels.tolist()}"
-            )
+            raise ValueError("technical condition id is outside the configured range")
 
-        # mclust 在 PCA 空间中进行分类，但 DEC 在原始拓扑嵌入
-        # 空间中计算距离，因此中心必须在原始 array 中重新计算。
-        centers = np.stack(
-            [
-                array[labels == cluster_id].mean(axis=0)
-                for cluster_id in range(self.num_clusters)
-            ],
-            axis=0,
-        ).astype(array.dtype, copy=False)
+        # 损失第 2 项的辅助子项：用真实技术标签监督 q_phi(b|x0)。
+        # 没有这一步，比值项中的 q_phi(b|x0) 没有可辨识的学习目标。
+        posterior_logits = self.data_posterior(clean)
+        posterior_per_row = F.cross_entropy(
+            posterior_logits, condition_ids, reduction="none"
+        )
+        posterior_loss = balanced_mean(
+            posterior_per_row, condition_ids, enabled=balanced
+        )
 
-        return labels, centers
+        # 损失第 2 项的比值/对齐主体：用 q_phi(b|x0) 作为软目标，训练 p(b|H)。
+        # detach 防止对齐分支反过来破坏已经由真实标签监督的 q_phi。
+        posterior_probability = F.softmax(posterior_logits.detach(), dim=-1)
+        topology_logits = self.topology_predictor(
+            gradient_reverse(topology, self.adversarial_strength)
+        )
+        # 梯度反转使预测器最小化该 KL，而拓扑编码器对抗性地弱化批次信息。
+        ratio_per_row = F.kl_div(
+            F.log_softmax(topology_logits, dim=-1),
+            posterior_probability,
+            reduction="none",
+        ).sum(dim=-1)
+        alignment_loss = balanced_mean(ratio_per_row, condition_ids, enabled=balanced)
 
-    def soft_assign(
-        self,
-        embedding: Tensor,
-    ) -> Tensor:
-        """计算标准 DEC Student-t 软聚类概率 q。"""
-
-        if not self.initialized:
-            raise RuntimeError(
-                "DEC cluster centers have not been initialized"
-            )
-
-        if embedding.ndim != 2:
-            raise ValueError(
-                "embedding must be a two-dimensional tensor"
-            )
-
-        if embedding.shape[1] != self.embedding_dim:
-            raise ValueError(
-                f"embedding width must be {self.embedding_dim}, "
-                f"got {embedding.shape[1]}"
-            )
-
-        squared_distance = (
-            embedding.unsqueeze(1)
-            - self.centers.unsqueeze(0)
-        ).square().sum(dim=2)
-
-        # 标准 DEC Student-t 核：
-        # q_ij ∝ (1 + ||z_i - μ_j||² / alpha)
-        #        ^ (-(alpha + 1) / 2)
-        numerator = (
-            1.0 + squared_distance / self.alpha
-        ).pow(-(self.alpha + 1.0) / 2.0)
-
-        return numerator / numerator.sum(
-            dim=1,
-            keepdim=True,
-        ).clamp_min(1e-12)
-
-    @staticmethod
-    def target_distribution(
-        q: Tensor,
-    ) -> Tensor:
-        """根据当前软聚类概率 q 计算 DEC 目标分布 p。"""
-
-        cluster_frequency = q.sum(
-            dim=0,
-            keepdim=True,
-        ).clamp_min(1e-12)
-
-        weight = q.square() / cluster_frequency
-
-        return weight / weight.sum(
-            dim=1,
-            keepdim=True,
-        ).clamp_min(1e-12)
-
-    @staticmethod
-    def loss(
-        p: Tensor,
-        q: Tensor,
-    ) -> Tensor:
-        """计算数值稳定的 KL(P || Q)。"""
-
-        p_safe = p.clamp_min(1e-12)
-        q_safe = q.clamp_min(1e-12)
-
-        return torch.sum(
-            p_safe * (
-                p_safe.log() - q_safe.log()
-            ),
-            dim=1,
-        ).mean()
+        return {
+            "alignment_loss": alignment_loss,
+            "posterior_loss": posterior_loss,
+            "posterior_accuracy": (posterior_logits.argmax(dim=-1) == condition_ids)
+            .float()
+            .mean()
+            .detach(),
+            "topology_accuracy": (topology_logits.argmax(dim=-1) == condition_ids)
+            .float()
+            .mean()
+            .detach(),
+        }
 
 
+def empirical_prior_kl(
+    topology: Tensor,
+    condition_ids: Tensor,
+    *,
+    eps: float = 1e-5,
+) -> Tensor:
+    """Approximate KL(q_phi(H|b) || p(H)) with diagonal empirical Gaussians.
+    """
+
+    if topology.ndim != 2 or condition_ids.shape != (topology.shape[0],):
+        raise ValueError("topology must be [N, D] and condition_ids must be [N]")
+    groups = torch.unique(condition_ids)
+    if groups.numel() <= 1:
+        return topology.sum() * 0.0
+
+    # 损失第 3 项：用对角高斯的经验矩近似 q_phi(H|b) 与共享先验 p(H)。
+    pooled_mean = topology.mean(dim=0).detach()
+    pooled_variance = topology.var(dim=0, unbiased=False).clamp_min(eps).detach()
+    terms = []
+    for group in groups:
+        values = topology[condition_ids == group]
+        group_mean = values.mean(dim=0)
+        group_variance = values.var(dim=0, unbiased=False).clamp_min(eps)
+        # 对角高斯之间 KL(q_phi(H|b) || p(H)) 的闭式表达。
+        kl = 0.5 * (
+            group_variance / pooled_variance
+            + (group_mean - pooled_mean).square() / pooled_variance
+            - 1.0
+            + pooled_variance.log()
+            - group_variance.log()
+        )
+        terms.append(kl.mean())
+    return torch.stack(terms).mean()
