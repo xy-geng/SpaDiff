@@ -38,9 +38,6 @@ Core workflows
 Additional example
 ------------------
 
-The breast-cancer example also maps harmonized PCA features back to gene
-space and stores a denoised expression layer.
-
 .. toctree::
    :maxdepth: 1
 
