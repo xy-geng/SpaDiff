@@ -2,37 +2,20 @@
 
 [![Documentation Status](https://readthedocs.org/projects/spadiff/badge/?version=latest)](https://spadiff.readthedocs.io/en/latest/)
 
-SpaDiff: Topology-aware score-based diffusion modeling for integrating multi-slice and multi-omics spatial data
+Topology-aware score-based diffusion modeling for integrating multi-slice and multi-omics spatial data
 
 ![SpaDiff overview](./Spadiff_overview.jpg)
 
 ## Abstract
 
-Spatial omics experiments increasingly profile serial tissue sections,
-different conditions, and complementary molecular modalities. Integrating
-these measurements requires both technical harmonization and preservation of
-spatial continuity. SpaDiff addresses this problem by constructing simplicial
-complexes from spatial neighborhoods, learning edge- and triangle-induced
-representations, and conditioning a variance-preserving score-based diffusion
-model on the fused topology and technical labels.
+Biological systems are organized across space and time, yet most spatial omics studies still rely on individual two-dimensional slices that provide only partial views of tissue architecture. As spatial profiling expands to serial slices, multiple conditions, and complementary molecular modalities, there is a growing need for computational methods that can integrate heterogeneous measurements while preserving spatial continuity and tissue topology.
+Here we present SpaDiff, a spatial diffusion-dynamics framework for integrating, denoising, and generating multi-slice and multi-omics spatial data. 
+SpaDiff represents tissue organization with simplicial complexes, enabling the modeling of higher-order spatial interactions beyond conventional edge-based graphs. It further formulates integration within a unified conditional score-based diffusion framework, in which diffusion processes defined on distinct simplicial complexes are coupled through a spatially constrained stochastic differential equation. 
+This formulation enables harmonization across slices and modalities while preserving biologically meaningful spatial structure.
+Across 19 spatial transcriptomics datasets from human and mouse tissues, SpaDiff improves cross-slice integration, maintains anatomical consistency, and recovers coherent spatial domains in both serial and non-serial settings. 
+SpaDiff also generalizes to spatial multi-omics data, including joint analysis of spatial ATAC-RNA measurements. In HER2-positive breast cancer, SpaDiff supports crossmodal generation of gene expression from histology and identifies candidate prognostic genes.
+Together, these results establish SpaDiff as a general framework for reconstructing tissue functional landscapes from complex spatial omics data.
 
-The framework supports single- and multi-slice spatial transcriptomics,
-serial-slice reconstruction, adjacent-slice stitching, paired spatial
-multi-omics, and denoised expression recovery. In the manuscript, SpaDiff was
-evaluated across 19 human and mouse spatial transcriptomics datasets and a
-paired spatial ATAC-RNA dataset.
-
-## Highlights
-
-- Models pairwise and higher-order spatial interactions with simplicial
-  complexes.
-- Uses a topology- and batch/modality-conditioned VP-SDE for harmonization.
-- Supports single slices, serial or adjacent slices, and paired spatial
-  multi-omics.
-- Provides topology-aware and diffusion-harmonized representations for
-  clustering and downstream analysis.
-- Includes utilities for serial-slice alignment, ATAC LSI preprocessing, and
-  gene expression denoising.
 
 ## Method overview
 
@@ -165,9 +148,9 @@ in a common coordinate system before cross-slice topology construction. The
 Moran-centroid alignment.
 
 For 10x Visium data, each sample directory should contain the filtered feature
-matrix and the standard `spatial/` directory. Reference labels such as
-`truth.txt` are used only for evaluation. Dataset sources are listed in
-[data/readme.md](data/readme.md).
+matrix and the standard `spatial/` directory.
+Reference labels such as`truth.txt` are used only for evaluation. 
+Dataset sources are listed in [data/readme.md](data/readme.md).
 
 ## Quick start: multi-slice DLPFC integration
 
