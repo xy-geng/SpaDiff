@@ -4,7 +4,7 @@
 
 Topology-aware score-based diffusion modeling for integrating multi-slice and multi-omics spatial data
 
-![SpaDiff overview](./SpaDiff_overview.jpg)
+![SpaDiff overview](./spadiff.jpg)
 
 ## Abstract
 
