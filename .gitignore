@@ -2,3 +2,11 @@
 docs/build/
 docs/_build/
 _build/
+
+# Python/package artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/

@@ -13,8 +13,9 @@ Simplex = Tuple[int, ...]
 def _undirected_neighbors(adjacency) -> List[set[int]]:
     """Symmetrize an adjacency matrix and return neighbors without self-loops."""
     if hasattr(adjacency, "tocsr"):
-        matrix = adjacency.tocsr().maximum(adjacency.T.tocsr())
+        matrix = adjacency.tocsr().maximum(adjacency.T.tocsr()).tolil()
         matrix.setdiag(0)
+        matrix = matrix.tocsr()
         matrix.eliminate_zeros()
         return [
             set(matrix.indices[matrix.indptr[i] : matrix.indptr[i + 1]].tolist())

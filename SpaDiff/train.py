@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence
+import warnings
 
 import torch
 from torch import Tensor
+from tqdm.auto import tqdm
 
 
 class ExponentialMovingAverage:
@@ -75,8 +77,9 @@ def train_spadiff(
     learning_rate: float = 1e-3,
     weight_decay: float = 1e-4,
     grad_clip: Optional[float] = 1.0,
-    ema_decay: Optional[float] = 0.999,
-    verbose_every: int = 25,
+    ema_decay: Optional[float] = 0.990,
+    verbose_every: Optional[int] = None,
+    progress: bool = True,
     checkpoint_epochs: Optional[Sequence[int]] = None,
     checkpoint_callback: Optional[Callable[[object, int, dict], bool | None]] = None,
 ) -> TrainingResult:
@@ -91,6 +94,13 @@ def train_spadiff(
         raise ValueError("epochs must be positive")
     if grad_clip is not None and grad_clip <= 0.0:
         raise ValueError("grad_clip must be positive or None")
+    if verbose_every not in (None, 0):
+        warnings.warn(
+            "verbose_every is deprecated and no longer prints losses; "
+            "use progress=True to display epoch progress",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     callback_epochs = None
     if checkpoint_epochs is not None:
         callback_epochs = {int(value) for value in checkpoint_epochs}
@@ -121,84 +131,87 @@ def train_spadiff(
     stopped_early = False
     model.train()
 
-    for epoch in range(epochs):
-        # model.loss 内部已经按三个外层权重组合 DSM、批次对齐和 KL 项。
-        output = model.loss(
-            target_features,
-            operators,
-            batch_ids,
-            modality_ids,
-            condition_features=condition_features,
-        )
-        # 这里只对加权后的总损失反向传播；各原始子项保留用于诊断量级。
-        loss = output["loss"]
-        if not torch.isfinite(loss):
-            raise FloatingPointError(
-                f"non-finite training loss at epoch {epoch + 1}: {loss.item()}"
+    iterator = (
+        tqdm(range(epochs), desc="Training SpaDiff", unit="epoch")
+        if progress
+        else range(epochs)
+    )
+    try:
+        for epoch in iterator:
+
+            output = model.loss(
+                target_features,
+                operators,
+                batch_ids,
+                modality_ids,
+                condition_features=condition_features,
             )
 
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        if grad_clip is not None:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
-        optimizer.step()
-        if ema is not None:
-            ema.update(model.parameters())
+            loss = output["loss"]
+            if not torch.isfinite(loss):
+                raise FloatingPointError(
+                    f"non-finite training loss at epoch {epoch + 1}: {loss.item()}"
+                )
 
-        values = {
-            "total_loss": float(loss.detach().cpu()),
-            "dsm_loss": float(output["dsm_loss"].detach().cpu()),
-            "batch_loss": float(output["batch_loss"].detach().cpu()),
-            "batch_alignment_loss": float(
-                output["batch_alignment_loss"].detach().cpu()
-            ),
-            "batch_posterior_loss": float(
-                output["batch_posterior_loss"].detach().cpu()
-            ),
-            "prior_kl_loss": float(output["prior_kl_loss"].detach().cpu()),
-            "weighted_dsm_loss": float(output["weighted_dsm_loss"].detach().cpu()),
-            "weighted_batch_loss": float(
-                output["weighted_batch_loss"].detach().cpu()
-            ),
-            "weighted_prior_kl_loss": float(
-                output["weighted_prior_kl_loss"].detach().cpu()
-            ),
-            "noise_mse": float(output["noise_mse"].detach().cpu()),
-            "score_mse": float(output["score_mse"].detach().cpu()),
-            "posterior_accuracy": float(output["posterior_accuracy"].detach().cpu()),
-            "topology_batch_accuracy": float(
-                output["topology_batch_accuracy"].detach().cpu()
-            ),
-        }
-        history.append(values["total_loss"])
-        dsm_history.append(values["dsm_loss"])
-        alignment_history.append(values["batch_alignment_loss"])
-        posterior_history.append(values["batch_posterior_loss"])
-        prior_history.append(values["prior_kl_loss"])
-        diagnostics.append({"epoch": epoch + 1, **values})
-        if values["total_loss"] < best:
-            best = values["total_loss"]
-            best_epoch = epoch + 1
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            if grad_clip is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            optimizer.step()
+            if ema is not None:
+                ema.update(model.parameters())
 
-        if verbose_every and (epoch == 0 or (epoch + 1) % verbose_every == 0):
-            print(
-                f"Epoch {epoch + 1:04d}/{epochs} | "
-                f"total={values['total_loss']:.6f} | "
-                f"dsm={values['dsm_loss']:.6f} | "
-                f"align={values['batch_alignment_loss']:.6f} | "
-                f"posterior={values['batch_posterior_loss']:.6f} | "
-                f"prior={values['prior_kl_loss']:.6f}"
-            )
+            values = {
+                "total_loss": float(loss.detach().cpu()),
+                "dsm_loss": float(output["dsm_loss"].detach().cpu()),
+                "batch_loss": float(output["batch_loss"].detach().cpu()),
+                "batch_alignment_loss": float(
+                    output["batch_alignment_loss"].detach().cpu()
+                ),
+                "batch_posterior_loss": float(
+                    output["batch_posterior_loss"].detach().cpu()
+                ),
+                "prior_kl_loss": float(output["prior_kl_loss"].detach().cpu()),
+                "weighted_dsm_loss": float(
+                    output["weighted_dsm_loss"].detach().cpu()
+                ),
+                "weighted_batch_loss": float(
+                    output["weighted_batch_loss"].detach().cpu()
+                ),
+                "weighted_prior_kl_loss": float(
+                    output["weighted_prior_kl_loss"].detach().cpu()
+                ),
+                "noise_mse": float(output["noise_mse"].detach().cpu()),
+                "score_mse": float(output["score_mse"].detach().cpu()),
+                "posterior_accuracy": float(
+                    output["posterior_accuracy"].detach().cpu()
+                ),
+                "topology_batch_accuracy": float(
+                    output["topology_batch_accuracy"].detach().cpu()
+                ),
+            }
+            history.append(values["total_loss"])
+            dsm_history.append(values["dsm_loss"])
+            alignment_history.append(values["batch_alignment_loss"])
+            posterior_history.append(values["batch_posterior_loss"])
+            prior_history.append(values["prior_kl_loss"])
+            diagnostics.append({"epoch": epoch + 1, **values})
+            if values["total_loss"] < best:
+                best = values["total_loss"]
+                best_epoch = epoch + 1
 
-        if (
-            checkpoint_callback is not None
-            and callback_epochs is not None
-            and (epoch + 1) in callback_epochs
-        ):
-            should_stop = checkpoint_callback(model, epoch + 1, values)
-            if should_stop:
-                stopped_early = True
-                break
+            if (
+                checkpoint_callback is not None
+                and callback_epochs is not None
+                and (epoch + 1) in callback_epochs
+            ):
+                should_stop = checkpoint_callback(model, epoch + 1, values)
+                if should_stop:
+                    stopped_early = True
+                    break
+    finally:
+        if progress:
+            iterator.close()
 
     return TrainingResult(
         losses=history,

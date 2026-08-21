@@ -2,10 +2,6 @@
 
 Reference design:
 https://github.com/yang-song/score_sde_pytorch/blob/main/sde_lib.py
-
-This is an adaptation, not a verbatim copy. The important changes are
-two-dimensional broadcasting, condition-aware score closures, generator-aware
-sampling, and explicit reverse-SDE versus probability-flow-ODE semantics.
 """
 
 from __future__ import annotations

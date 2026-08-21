@@ -269,7 +269,7 @@ def make_score_fn(
         raise ValueError("guidance_target must be 'all' or 'labels'")
 
     def score_fn(x: Tensor, t: Tensor) -> Tensor:
-        # 训练与采样必须使用同一套组件开关，避免消融条件在推断时被重新启用。
+
         used_batch = batch_ids
         drop_topology = None
         if not use_batch_condition:

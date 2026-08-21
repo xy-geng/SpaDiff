@@ -50,7 +50,7 @@ class PolynomialPropagation(nn.Module):
 
 
 class TopologyEncoder(nn.Module):
-    """Multi-channel edge/triangle encoder"""
+    """Multi-channel edge/triangle encoder with order attention."""
 
     def __init__(
         self,
@@ -87,7 +87,15 @@ class TopologyEncoder(nn.Module):
                 for order in self.orders
             }
         )
-        self.fusion = nn.Linear(len(self.orders) * hidden_dim, output_dim)
+        self.channel_norms = nn.ModuleDict(
+            {str(order): nn.LayerNorm(hidden_dim) for order in self.orders}
+        )
+        self.attention = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 1, bias=False),
+        )
+        self.fusion = nn.Linear(hidden_dim, output_dim)
         if residual:
             if input_dim == output_dim:
                 self.residual_projection = nn.Identity()
@@ -103,18 +111,27 @@ class TopologyEncoder(nn.Module):
             nn.LayerNorm(output_dim) if self.output_normalization == "layer" else None
         )
 
-    def forward(self, features: Tensor, operators) -> Tensor:
+    def forward(
+        self, features: Tensor, operators, *, return_attention: bool = False
+    ) -> Tensor | tuple[Tensor, Tensor]:
         # 每个单纯形阶数（边、三角形等）使用独立投影与传播通道。
         dropped = F.dropout(features, self.dropout, training=self.training)
         channels = []
         for order in self.orders:
-            hidden = F.silu(self.projections[str(order)](dropped))
+            hidden = self.projections[str(order)](dropped)
             hidden = F.dropout(hidden, self.projection_dropout, training=self.training)
-            channels.append(
-                self.propagations[str(order)](hidden, _get_operator(operators, order))
+            hidden = self.propagations[str(order)](
+                hidden, _get_operator(operators, order)
             )
-        # 拼接所有阶的通道并线性融合，得到论文中的拓扑条件 H。
-        output = self.fusion(torch.cat(channels, dim=-1))
+            hidden = F.silu(hidden)
+            channels.append(self.channel_norms[str(order)](hidden))
+
+        # 对同一 spot 的不同单纯形阶进行 softmax 注意力，再按论文式 (13)-(15)
+        # 加权求和得到融合的拓扑条件 H。
+        stacked = torch.stack(channels, dim=1)
+        attention = F.softmax(self.attention(stacked).squeeze(-1), dim=1)
+        fused = torch.sum(attention.unsqueeze(-1) * stacked, dim=1)
+        output = self.fusion(fused)
         if self.residual_projection is not None:
             output = output + self.residual_projection(features)
         if self.output_normalization == "feature":
@@ -123,6 +140,8 @@ class TopologyEncoder(nn.Module):
             output = (output - mean) * torch.rsqrt(variance + 1e-5)
         elif self.layer_norm is not None:
             output = self.layer_norm(output)
+        if return_attention:
+            return output, attention
         return output
 
 
@@ -282,7 +301,7 @@ def empirical_prior_kl(
         values = topology[condition_ids == group]
         group_mean = values.mean(dim=0)
         group_variance = values.var(dim=0, unbiased=False).clamp_min(eps)
-        # 对角高斯之间 KL(q_phi(H|b) || p(H)) 的闭式表达。
+
         kl = 0.5 * (
             group_variance / pooled_variance
             + (group_mean - pooled_mean).square() / pooled_variance

@@ -1,0 +1,5 @@
+include requirements.txt
+include SpaDiff_overview.jpg
+recursive-include tests *.py
+recursive-include tutorial *.ipynb
+recursive-include docs *.py *.rst *.txt *.ipynb

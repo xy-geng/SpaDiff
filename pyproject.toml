@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SpaDiff"
+dynamic = ["version"]
+description = "Topology-aware conditional diffusion for spatial multi-slice and multi-omics integration"
+readme = {file = "readme.md", content-type = "text/markdown"}
+requires-python = ">=3.9,<3.11"
+license = {text = "MIT"}
+authors = [
+  {name = "Xinyi Geng"},
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+  "numpy==1.24.1",
+  "pandas==1.4.2",
+  "scipy>=1.9,<1.11",
+  "scikit-learn==1.1.1",
+  "torch==2.4.1",
+  "tqdm>=4.64",
+]
+
+[project.optional-dependencies]
+tutorial = [
+  "anndata==0.8.0",
+  "scanpy==1.9.1",
+  "scikit-misc>=0.1.4,<0.4",
+  "matplotlib<3.7",
+  "jupyterlab>=3",
+]
+mclust = [
+  "rpy2==3.4.1",
+]
+pyg = [
+  "torch-geometric==2.6.1",
+]
+test = [
+  "anndata==0.8.0",
+  "build>=1",
+  "nbformat>=5",
+  "pytest>=7,<9",
+]
+
+[project.urls]
+Homepage = "https://github.com/xy-geng/SpaDiff"
+Documentation = "https://spadiff.readthedocs.io/en/latest/"
+Repository = "https://github.com/xy-geng/SpaDiff.git"
+
+[tool.setuptools.packages.find]
+include = ["SpaDiff*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "SpaDiff._version.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

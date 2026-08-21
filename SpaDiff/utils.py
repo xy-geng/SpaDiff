@@ -220,9 +220,7 @@ def _adjust_clustering_resolution(
         if np.isclose(current_res, res_low) or np.isclose(current_res, res_high):
             break
         current_count = evaluate(current_res)
-        # Louvain/Leiden cluster counts are normally non-decreasing with
-        # resolution. The best visited solution is still retained if a backend
-        # exhibits a small non-monotonic jump.
+
         if current_count < target_n_clusters:
             res_low = current_res
         else:
