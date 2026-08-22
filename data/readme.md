@@ -4,4 +4,4 @@ The spatial ATAC–RNA-seq mouse brain dataset was downloaded from https://www.n
 The spatial transcriptomics dataset of the developing human heart, comprising sections spanning 4.5–9 post-conception weeks (PCW), was obtained from [the Spatial Research website.](https://www.spatialresearch.org/resources-published-datasets/doi-10-1016-j-cell-2019-11-025/)
 The HER2-positive breast tumor data from ST platform is available at https://github.com/almaan/her2st.
 
-All datasets can be download at .
+All datasets can be download at https://doi.org/10.5281/zenodo.22043830.

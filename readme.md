@@ -151,6 +151,7 @@ For 10x Visium data, each sample directory should contain the filtered feature
 matrix and the standard `spatial/` directory.
 Reference labels such as`truth.txt` are used only for evaluation. 
 Dataset sources are listed in [data/readme.md](data/readme.md).
+All datasets can be download at https://doi.org/10.5281/zenodo.22043830.
 
 ## Quick start: multi-slice DLPFC integration
 
