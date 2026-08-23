@@ -1,3 +1,5 @@
+:orphan:
+
 Adjacent mouse-brain slice stitching
 ====================================
 
