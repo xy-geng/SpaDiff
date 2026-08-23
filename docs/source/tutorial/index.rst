@@ -42,11 +42,3 @@ Additional example
    :maxdepth: 1
 
    Breast-cancer integration and gene denoising <03_BreastCancer/3-breastcancer>
-
-.. toctree::
-   :hidden:
-
-   01_DLPFC/index
-   02_MouseBrain/index
-   03_BreastCancer/index
-   04_MultiOmics/index
