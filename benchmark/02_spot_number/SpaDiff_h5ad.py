@@ -2,7 +2,7 @@ import sys
 import time
 from pathlib import Path
 
-SPADIFF_SOURCE_DIR = Path(r"D:\SpaDiff\SpaDiff_improved")
+SPADIFF_SOURCE_DIR = Path(r"D:\SpaDiff\SpaDiff")
 sys.path.append(str(SPADIFF_SOURCE_DIR.parent))
 
 import SpaDiff_improved as sd

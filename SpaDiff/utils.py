@@ -58,48 +58,6 @@ def cal_purity(y_true, y_pred):
     return float(np.max(matrix, axis=0).sum() / matrix.sum())
 
 
-def tfidf(X):
-    """TF-IDF normalization retained from the original ATAC preprocessing."""
-    import scipy.sparse
-
-    column_sum = np.asarray(X.sum(axis=0)).ravel()
-    idf = np.divide(
-        X.shape[0],
-        column_sum,
-        out=np.zeros_like(column_sum, dtype=float),
-        where=column_sum > 0,
-    )
-    if scipy.sparse.issparse(X):
-        row_sum = np.asarray(X.sum(axis=1)).ravel()
-        inv = np.divide(
-            1.0, row_sum, out=np.zeros_like(row_sum, dtype=float), where=row_sum > 0
-        )
-        return X.multiply(inv[:, None]).multiply(idf)
-    row_sum = X.sum(axis=1, keepdims=True)
-    tf = np.divide(X, row_sum, out=np.zeros_like(X, dtype=float), where=row_sum > 0)
-    return tf * idf
-
-
-def lsi(
-    adata, n_components: int = 20, use_highly_variable: Optional[bool] = None, **kwargs
-):
-    """LSI retained from the original code with zero-variance protection."""
-    import sklearn.preprocessing
-    import sklearn.utils.extmath
-
-    if use_highly_variable is None:
-        use_highly_variable = "highly_variable" in adata.var
-    adata_use = adata[:, adata.var["highly_variable"]] if use_highly_variable else adata
-    normalized = sklearn.preprocessing.Normalizer(norm="l1").fit_transform(
-        tfidf(adata_use.X)
-    )
-    normalized = np.log1p(normalized * 1e4)
-    values = sklearn.utils.extmath.randomized_svd(normalized, n_components, **kwargs)[0]
-    values -= values.mean(axis=1, keepdims=True)
-    scale = values.std(axis=1, ddof=1, keepdims=True)
-    values = np.divide(values, scale, out=np.zeros_like(values), where=scale > 0)
-    adata.obsm["X_lsi"] = values[:, 1:]
-
 
 def _adjust_clustering_resolution(
     adata,
