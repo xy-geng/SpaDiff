@@ -41,9 +41,6 @@ tutorial = [
 mclust = [
   "rpy2==3.4.1",
 ]
-pyg = [
-  "torch-geometric==2.6.1",
-]
 test = [
   "anndata==0.8.0",
   "build>=1",

@@ -17,7 +17,6 @@ supported.
 | scikit-learn | `1.1.1` | PCA, LSI, and nearest neighbors |
 | Scanpy | `1.9.1` | Preprocessing and visualization |
 | AnnData | `0.8.0` | Spatial-omics data container |
-| PyTorch Geometric | `2.6.1` | Optional graph workflows |
 | R, `mclust`, and `rpy2` | `rpy2==3.4.1` | Optional mclust clustering |
 
 An NVIDIA GPU is strongly recommended for the full 300–500 epoch examples.
@@ -44,15 +43,13 @@ Run all remaining commands from the repository root.
 Choose **one** build. For an NVIDIA GPU compatible with CUDA 12.4:
 
 ```bash
-python -m pip install torch==2.4.1 \
-  --index-url https://download.pytorch.org/whl/cu124
+python -m pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cu124
 ```
 
 For CPU-only execution:
 
 ```bash
-python -m pip install torch==2.4.1 \
-  --index-url https://download.pytorch.org/whl/cpu
+python -m pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cpu
 ```
 
 If you need another CUDA build, select the matching command from the
@@ -61,29 +58,17 @@ The PyTorch package, CUDA wheel, and local NVIDIA driver must be compatible.
 
 ## 3. Install SpaDiff and the tutorial stack
 
-Install the repository in editable mode so that local source changes are
-available immediately:
+Install SpaDiff as a regular package:
 
 ```bash
-python -m pip install -e ".[tutorial]"
+python -m pip install ".[tutorial]"
 ```
 
-The equivalent convenience command is:
+Contributors who want an editable development install can instead use:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
-
-The core implementation uses native sparse PyTorch operators. PyTorch
-Geometric is optional and only needed for additional PyG workflows:
-
-```bash
-python -m pip install -e ".[pyg]"
-```
-
-When compiled PyG extensions are required, use wheels that match your PyTorch
-and CUDA versions. Consult the
-[PyTorch Geometric installation guide](https://pytorch-geometric.readthedocs.io/en/stable/notes/installation.html).
 
 ## 4. Optional mclust support
 
@@ -92,7 +77,7 @@ itself does not require R, and you can use Leiden or Louvain clustering from
 Scanpy instead.
 
 ```bash
-python -m pip install -e ".[mclust]"
+python -m pip install ".[mclust]"
 R -e "install.packages('mclust', repos='https://cloud.r-project.org')"
 ```
 
@@ -137,10 +122,6 @@ unavailable.
 **`torch.cuda.is_available()` is `False`**
 : Confirm that you installed a CUDA-enabled PyTorch wheel and that the NVIDIA
   driver supports it. SpaDiff will otherwise fall back to CPU.
-
-**PyTorch Geometric reports an undefined symbol or missing library**
-: Reinstall its compiled extensions using wheels built for the exact installed
-  PyTorch and CUDA versions, or omit the optional PyG extra.
 
 **`rpy2` cannot find R**
 : Verify `R --version`, set `R_HOME` if required, and restart the shell before

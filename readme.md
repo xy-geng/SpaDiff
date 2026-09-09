@@ -85,15 +85,13 @@ python -m pip install --upgrade pip
 For CUDA 12.4:
 
 ```bash
-python -m pip install torch==2.4.1 \
-  --index-url https://download.pytorch.org/whl/cu124
+python -m pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cu124
 ```
 
 For CPU-only execution:
 
 ```bash
-python -m pip install torch==2.4.1 \
-  --index-url https://download.pytorch.org/whl/cpu
+python -m pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cpu
 ```
 
 Use the [official PyTorch installer](https://pytorch.org/get-started/previous-versions/)
@@ -101,18 +99,17 @@ if another CUDA build is required.
 
 ### 3. Install SpaDiff and the tutorial dependencies
 
+Install SpaDiff as a regular package:
+
 ```bash
-python -m pip install -e ".[tutorial]"
+python -m pip install ".[tutorial]"
 ```
 
-The equivalent convenience command is:
+Contributors who want an editable development install can instead use:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
-
-The core package uses native sparse PyTorch operators. PyTorch Geometric is
-optional and can be installed with `python -m pip install -e ".[pyg]"`.
 
 Verify the installation:
 
@@ -126,7 +123,7 @@ The DLPFC tutorials use R `mclust` for downstream clustering. SpaDiff itself
 does not require R; Louvain or Leiden can be used instead.
 
 ```bash
-python -m pip install -e ".[mclust]"
+python -m pip install ".[mclust]"
 R -e "install.packages('mclust', repos='https://cloud.r-project.org')"
 ```
 
