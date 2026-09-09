@@ -34,7 +34,7 @@ node-simplex operator. The resulting order-specific embeddings are fused into
 a topology representation `H`, which conditions the reverse diffusion process
 together with slice, batch, or modality labels.
 
-SpaDiff optimizes three manuscript-level objectives:
+SpaDiff is jointly optimized using three complementary objectives:
 
 ```text
 L_total = lambda_DSM * L_DSM
@@ -42,11 +42,9 @@ L_total = lambda_DSM * L_DSM
         + lambda_KL * L_KL
 ```
 
-`L_DSM` learns the conditional score, `L_align` reduces technical information
-in the topology representation, and `L_KL` regularizes condition-specific
-topology distributions toward a shared prior. In the implementation,
-`batch_posterior_weight` controls an auxiliary posterior term inside
-`L_align`; it is not a fourth main objective.
+`L_DSM` denotes the denoising score-matching loss used to train the conditional score network. 
+`L_align` denotes the cross-slice distribution-alignment loss used to reduce batch-associated distributional discrepancies across slices. 
+and `L_KL` denotes the prior-based KL regularization term, which constrains the slice-specific latent distributions toward a common prior distribution.
 
 PCA/LSI preprocessing, coordinate alignment or external spatial weighting,
 and downstream clustering are separate analytical steps surrounding the core
@@ -111,6 +109,9 @@ Contributors who want an editable development install can instead use:
 python -m pip install -r requirements.txt
 ```
 
+The core package uses native sparse PyTorch operators. PyTorch Geometric is
+optional and can be installed with `python -m pip install ".[pyg]"`.
+
 Verify the installation:
 
 ```bash
@@ -165,7 +166,6 @@ import scanpy as sc
 import torch
 
 import SpaDiff as sd
-from SpaDiff.spatial import spatial_reconstruction
 from SpaDiff.utils import set_seed
 
 SEED = 42
@@ -183,7 +183,7 @@ for sample in ST_SAMPLES:
     current.layers["counts"] = current.X.copy()
     sc.pp.normalize_total(current, target_sum=1e4)
     sc.pp.log1p(current)
-    current, _ = spatial_reconstruction(
+    current, _ = sd.spatial_reconstruction(
         current, alpha=1.5, n_neighbors=10
     )
     current.obs[BATCH_KEY] = sample
@@ -211,11 +211,8 @@ SIMPLEX_ORDERS = tuple(range(1, MAX_ORDER + 1))
 
 topology = sd.build_spatial_topology(
     adata,
-    mode="slice_aware",
     batch_key=BATCH_KEY,
     slice_order=ST_SAMPLES,
-    k_intra=6,
-    k_inter=2,
     max_order=MAX_ORDER,
     device=device,
 )
