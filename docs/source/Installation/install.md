@@ -127,6 +127,4 @@ unavailable.
 : Verify `R --version`, set `R_HOME` if required, and restart the shell before
   reinstalling `rpy2`.
 
-**Simplicial construction uses too much memory**
-: Reduce `N_NEIGHBORS`, use `MAX_ORDER = 1`, or test on a spatial subset before
-  enabling triangles (`MAX_ORDER = 2`).
+

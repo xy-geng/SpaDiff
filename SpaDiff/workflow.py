@@ -447,7 +447,7 @@ class SpaDiffWorkflowMixin:
             "rna_key": rna_key,
             "atac_key": atac_key,
             "joint_key": joint_key,
-            "joint_formula": "0.5 * (H_spadiff_rna + H_spadiff_atac)",
+            "joint_formula": f"0.5 * ({rna_key} + {atac_key})",
             "dsm_weight": float(self.config.dsm_weight),
             "batch_alignment_weight": float(
                 self.config.batch_alignment_weight

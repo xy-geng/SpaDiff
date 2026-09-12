@@ -140,7 +140,7 @@ SpaDiff workflows use `AnnData`. At minimum:
 - paired RNA and ATAC objects use matching spot names and coordinates.
 
 RNA data are normalized and reduced to PCA features. Paired ATAC data can be
-processed with `sd.robust_atac_lsi`. Multi-slice coordinates should be placed
+processed with `sd.atac_lsi`. Multi-slice coordinates should be placed
 in a common coordinate system before cross-slice topology construction. The
 `align_serial_slices` utility implements the manuscript's global
 Moran-centroid alignment.
@@ -180,27 +180,24 @@ slices = []
 for sample in ST_SAMPLES:
     current = sc.read_visium(DATA_ROOT / sample)
     current.var_names_make_unique()
-    current.layers["counts"] = current.X.copy()
     sc.pp.normalize_total(current, target_sum=1e4)
     sc.pp.log1p(current)
-    current, _ = sd.spatial_reconstruction(
-        current, alpha=1.5, n_neighbors=10
-    )
+    sc.pp.highly_variable_genes(current, flavor="seurat", n_top_genes=3000)
+    # current, _ = sd.spatial_reconstruction(
+    #     current, alpha=1.5, n_neighbors=10
+    # )
     current.obs[BATCH_KEY] = sample
     current.obs_names = [
         f"{sample}:{barcode}" for barcode in current.obs_names
     ]
     slices.append(current)
 
-adata = sc.concat(slices, join="inner", merge="same")
-sc.pp.highly_variable_genes(
-    adata,
-    flavor="seurat_v3",
-    layer="counts",
-    n_top_genes=3000,
-    batch_key=BATCH_KEY,
-    subset=True,
-)
+hvg_union = set().union(*(
+    set(x.var_names[x.var["highly_variable"]]) for x in slices
+))
+adata = sc.concat(slices, join="outer", merge="same", fill_value=0)
+adata = adata[:, adata.var_names.isin(hvg_union)].copy()
+sc.pp.scale(adata)
 ```
 
 ### 2. Build multi-slice simplicial operators
@@ -279,7 +276,7 @@ available in `model.training_result_`.
 
 | Parameter | Default | Description |
 | --- | ---: | --- |
-| `dsm_weighting` | `"variance"` | DSM time weighting |
+| `dsm_weighting` | `"score"` | DSM time weighting |
 | `dsm_weight` | `1.0` | Denoising score-matching weight |
 | `batch_alignment_weight` | `0.5` | Technical-alignment weight |
 | `prior_kl_weight` | `1.0` | Shared-prior regularization weight |

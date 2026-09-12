@@ -33,7 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 tutorial = [
   "anndata==0.8.0",
-  "scanpy==1.9.1",
+  "scanpy[louvain]==1.9.1",
   "scikit-misc>=0.1.4,<0.4",
   "matplotlib<3.7",
   "jupyterlab>=3",

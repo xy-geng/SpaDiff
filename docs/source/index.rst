@@ -18,18 +18,10 @@ Together, these results establish SpaDiff as a general framework for reconstruct
 What can SpaDiff do?
 --------------------
 
-* **Identify spatial domains on one tissue section.** SpaDiff combines the
-  molecular profile of every spot with the topology of its spatial
-  neighborhood.
-* **Reconstruct a three-dimensional tissue representation.** Consecutive
-  sections are connected through within-slice and between-slice neighborhoods
-  and embedded in a shared space.
-* **Align adjacent sections.** Coordinates are transformed into a
-  common frame before SpaDiff learns domains across the completed tissue
-  geometry.
-* **Integrate paired spatial multi-omics.** Modality-aware diffusion learns
-  RNA- and ATAC-specific representations, which are averaged spot by spot for
-  measurements obtained at the same locations.
+SpaDiff is designed for three major scenarios: 
+(i) 3D reconstruction from serial tissue slices
+(ii) Alignment and splicing of adjacent slices into a more complete tissues structure
+(iii) Integration of spatial multi-omics data, such as paired RNA and ATAC measurements 
 
 
 Getting started
@@ -45,7 +37,7 @@ matches your experiment:
    conda create -n spadiff python=3.9 -y
    conda activate spadiff
    python -m pip install --upgrade pip
-   python -m pip install -e ".[tutorial]"
+   python -m pip install ".[tutorial]"
 
 For GPU installations, install the appropriate PyTorch build before the final
 command. See :doc:`Installation/install` for complete CPU, CUDA, optional R,
