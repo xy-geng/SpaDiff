@@ -10,11 +10,10 @@ import pandas as pd
 import torch
 from torch import Tensor
 
-from .train import train_spadiff
+from .train import train_paired_multiomics, train_spadiff
 
 
 class SpaDiffWorkflowMixin:
-    """High-level fit/embedding orchestration for a SpaDiff model instance."""
 
     def _reset_workflow_state(self) -> None:
         self.training_result_ = None
@@ -111,6 +110,51 @@ class SpaDiffWorkflowMixin:
             prepared[order] = operator.to(device=device, dtype=dtype)
         return prepared
 
+    @staticmethod
+    def _validate_paired_observations(
+        adata_rna,
+        adata_atac,
+        *,
+        spatial_key: str,
+        coordinate_rtol: float,
+        coordinate_atol: float,
+    ) -> None:
+        if adata_rna.n_obs != adata_atac.n_obs:
+            raise ValueError(
+                "paired RNA and ATAC objects must contain the same number of spots"
+            )
+        if adata_rna.n_obs < 2:
+            raise ValueError("paired multi-omics integration requires at least two spots")
+        if not np.array_equal(
+            np.asarray(adata_rna.obs_names),
+            np.asarray(adata_atac.obs_names),
+        ):
+            raise ValueError(
+                "paired RNA and ATAC obs_names must be identical and in the same order"
+            )
+        for name, adata in (("RNA", adata_rna), ("ATAC", adata_atac)):
+            if spatial_key not in adata.obsm:
+                raise KeyError(f"{name} adata.obsm does not contain {spatial_key!r}")
+        rna_spatial = np.asarray(adata_rna.obsm[spatial_key], dtype=np.float64)
+        atac_spatial = np.asarray(adata_atac.obsm[spatial_key], dtype=np.float64)
+        if rna_spatial.shape != atac_spatial.shape:
+            raise ValueError(
+                "paired RNA and ATAC spatial coordinates must have identical shapes"
+            )
+        if not np.isfinite(rna_spatial).all() or not np.isfinite(atac_spatial).all():
+            raise ValueError("paired spatial coordinates must contain only finite values")
+        if not np.allclose(
+            rna_spatial,
+            atac_spatial,
+            rtol=coordinate_rtol,
+            atol=coordinate_atol,
+        ):
+            maximum = float(np.max(np.abs(rna_spatial - atac_spatial)))
+            raise ValueError(
+                "paired RNA and ATAC spatial coordinates differ; "
+                f"maximum absolute difference={maximum:.6g}"
+            )
+
     def fit_transform(
         self,
         adata,
@@ -137,11 +181,6 @@ class SpaDiffWorkflowMixin:
         ode_steps: Optional[int] = 300,
     ):
         """Fit this model and return AnnData containing both embeddings.
-
-        This method intentionally does not replace ``nn.Module.train``. It
-        owns the full user-facing optimization workflow while the existing
-        ``loss``, ``harmonize`` and ``encode_condition`` methods remain usable
-        as low-level building blocks.
         """
 
         if not isinstance(copy, bool):
@@ -279,4 +318,144 @@ class SpaDiffWorkflowMixin:
         self.batch_categories_ = batch_categories
         self.modality_categories_ = modality_categories
         self.reference_batch_ = selected_reference
+        return output
+
+    def fit_transform_multiomics(
+        self,
+        adata_rna,
+        adata_atac,
+        rna_features,
+        atac_features,
+        operators,
+        *,
+        spatial_key: str = "spatial",
+        coordinate_rtol: float = 1e-5,
+        coordinate_atol: float = 1e-5,
+        copy: bool = False,
+        rna_key: str = "H_rna",
+        atac_key: str = "H_atac",
+        joint_key: str = "spadiff_joint",
+        compatibility_key: str = "spadiff",
+        epochs: int = 500,
+        learning_rate: float = 1e-3,
+        weight_decay: float = 1e-4,
+        grad_clip: Optional[float] = 1.0,
+        ema_decay: Optional[float] = 0.990,
+        progress: bool = True,
+    ):
+        """Fit paired RNA--ATAC views and return their spot-wise mean embedding.
+        """
+
+        if not isinstance(copy, bool):
+            raise TypeError("copy must be a boolean")
+        if coordinate_rtol < 0.0 or coordinate_atol < 0.0:
+            raise ValueError("coordinate tolerances must be non-negative")
+        embedding_keys = (rna_key, atac_key, joint_key, compatibility_key)
+        if any(not isinstance(key, str) or not key for key in embedding_keys):
+            raise ValueError("embedding keys must be non-empty strings")
+        if len(set(embedding_keys)) != len(embedding_keys):
+            raise ValueError("paired multi-omics embedding keys must be distinct")
+        if self.config.num_batches != 1:
+            raise ValueError(
+                "this paired single-dataset workflow requires num_batches=1"
+            )
+        if self.config.num_modalities != 2:
+            raise ValueError(
+                "paired RNA-ATAC integration requires num_modalities=2"
+            )
+        if self.config.data_dim != self.config.condition_input_dim:
+            raise ValueError(
+                "paired RNA-ATAC integration requires data_dim to equal "
+                "condition_input_dim"
+            )
+
+        self._validate_paired_observations(
+            adata_rna,
+            adata_atac,
+            spatial_key=spatial_key,
+            coordinate_rtol=coordinate_rtol,
+            coordinate_atol=coordinate_atol,
+        )
+        self._reset_workflow_state()
+        output = adata_rna.copy() if copy else adata_rna
+        device, dtype = self._model_device_and_dtype()
+        rna = self._as_feature_tensor(
+            rna_features,
+            name="rna_features",
+            n_obs=adata_rna.n_obs,
+            width=self.config.data_dim,
+            device=device,
+            dtype=dtype,
+        )
+        atac = self._as_feature_tensor(
+            atac_features,
+            name="atac_features",
+            n_obs=adata_atac.n_obs,
+            width=self.config.data_dim,
+            device=device,
+            dtype=dtype,
+        )
+        prepared_operators = self._prepare_operators(
+            operators,
+            n_obs=adata_rna.n_obs,
+            device=device,
+            dtype=dtype,
+        )
+        batch_ids = torch.zeros(adata_rna.n_obs, dtype=torch.long, device=device)
+
+        training = train_paired_multiomics(
+            self,
+            rna,
+            atac,
+            prepared_operators,
+            batch_ids,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            grad_clip=grad_clip,
+            ema_decay=ema_decay,
+            progress=progress,
+        )
+
+        if training.ema is not None:
+            training.ema.store(self.parameters())
+            training.ema.copy_to(self.parameters())
+        try:
+            self.eval()
+            with torch.no_grad():
+                topology_rna, topology_atac, topology_joint = (
+                    self.encode_paired_multiomics(
+                        rna,
+                        atac,
+                        prepared_operators,
+                    )
+                )
+        finally:
+            if training.ema is not None:
+                training.ema.restore(self.parameters())
+
+        rna_values = topology_rna.detach().cpu().numpy()
+        atac_values = topology_atac.detach().cpu().numpy()
+        joint_values = topology_joint.detach().cpu().numpy()
+        output.obsm[rna_key] = rna_values
+        output.obsm[atac_key] = atac_values
+        output.obsm[joint_key] = joint_values
+        output.obsm[compatibility_key] = joint_values.copy()
+        output.uns["spadiff_multiomics"] = {
+            "modalities": np.asarray(("RNA", "ATAC"), dtype=str),
+            "n_paired_spots": int(output.n_obs),
+            "rna_key": rna_key,
+            "atac_key": atac_key,
+            "joint_key": joint_key,
+            "joint_formula": "0.5 * (H_spadiff_rna + H_spadiff_atac)",
+            "dsm_weight": float(self.config.dsm_weight),
+            "batch_alignment_weight": float(
+                self.config.batch_alignment_weight
+            ),
+            "prior_kl_weight": float(self.config.prior_kl_weight),
+        }
+        self.training_result_ = training
+        self.batch_categories_ = (0,)
+        self.modality_categories_ = ("RNA", "ATAC")
+        self.reference_batch_ = 0
         return output

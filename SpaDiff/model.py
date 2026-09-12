@@ -24,8 +24,6 @@ def _get_operator(operators, order: int) -> Tensor:
 
 
 class PolynomialPropagation(nn.Module):
-    """Polynomial higher-order propagation from manuscript Eq. (9)-(10)."""
-
     def __init__(self, steps: int, alpha: float, learnable: bool = False):
         super().__init__()
         coefficients = [alpha * (1.0 - alpha) ** k for k in range(steps)]
@@ -39,7 +37,6 @@ class PolynomialPropagation(nn.Module):
             self.register_buffer("coefficients", values)
 
     def forward(self, x: Tensor, operator: Tensor) -> Tensor:
-        # 模型组成：实现论文式 (9)-(10) 的多跳高阶邻域多项式传播。
         weights = F.softmax(self.logits, dim=0) if self.learnable else self.coefficients
         propagated = x
         result = weights[0] * x
@@ -50,8 +47,6 @@ class PolynomialPropagation(nn.Module):
 
 
 class TopologyEncoder(nn.Module):
-    """Multi-channel edge/triangle encoder with order attention."""
-
     def __init__(
         self,
         input_dim: int,
@@ -114,7 +109,6 @@ class TopologyEncoder(nn.Module):
     def forward(
         self, features: Tensor, operators, *, return_attention: bool = False
     ) -> Tensor | tuple[Tensor, Tensor]:
-        # 每个单纯形阶数（边、三角形等）使用独立投影与传播通道。
         dropped = F.dropout(features, self.dropout, training=self.training)
         channels = []
         for order in self.orders:
@@ -126,8 +120,6 @@ class TopologyEncoder(nn.Module):
             hidden = F.silu(hidden)
             channels.append(self.channel_norms[str(order)](hidden))
 
-        # 对同一 spot 的不同单纯形阶进行 softmax 注意力，再按论文式 (13)-(15)
-        # 加权求和得到融合的拓扑条件 H。
         stacked = torch.stack(channels, dim=1)
         attention = F.softmax(self.attention(stacked).squeeze(-1), dim=1)
         fused = torch.sum(attention.unsqueeze(-1) * stacked, dim=1)
@@ -155,7 +147,6 @@ def technical_condition_ids(
 
 
 def balanced_mean(values: Tensor, group_ids: Tensor, enabled: bool = True) -> Tensor:
-    """Average groups equally so large slices do not dominate the objective."""
 
     if values.ndim != 1 or group_ids.ndim != 1 or values.shape != group_ids.shape:
         raise ValueError("values and group_ids must both have shape [N]")
@@ -175,8 +166,6 @@ class _GradientReversal(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, gradient: Tensor):
-        # 损失第 2 项：分类器按正常方向学习批次；拓扑编码器收到反向梯度，
-        # 从而尽量移除 H 中可识别批次/模态的信息。
         return -ctx.strength * gradient, None
 
 
@@ -240,8 +229,6 @@ class TechnicalConditionObjective(nn.Module):
         ):
             raise ValueError("technical condition id is outside the configured range")
 
-        # 损失第 2 项的辅助子项：用真实技术标签监督 q_phi(b|x0)。
-        # 没有这一步，比值项中的 q_phi(b|x0) 没有可辨识的学习目标。
         posterior_logits = self.data_posterior(clean)
         posterior_per_row = F.cross_entropy(
             posterior_logits, condition_ids, reduction="none"
@@ -250,13 +237,10 @@ class TechnicalConditionObjective(nn.Module):
             posterior_per_row, condition_ids, enabled=balanced
         )
 
-        # 损失第 2 项的比值/对齐主体：用 q_phi(b|x0) 作为软目标，训练 p(b|H)。
-        # detach 防止对齐分支反过来破坏已经由真实标签监督的 q_phi。
         posterior_probability = F.softmax(posterior_logits.detach(), dim=-1)
         topology_logits = self.topology_predictor(
             gradient_reverse(topology, self.adversarial_strength)
         )
-        # 梯度反转使预测器最小化该 KL，而拓扑编码器对抗性地弱化批次信息。
         ratio_per_row = F.kl_div(
             F.log_softmax(topology_logits, dim=-1),
             posterior_probability,
@@ -284,8 +268,6 @@ def empirical_prior_kl(
     *,
     eps: float = 1e-5,
 ) -> Tensor:
-    """Approximate KL(q_phi(H|b) || p(H)) with diagonal empirical Gaussians.
-    """
 
     if topology.ndim != 2 or condition_ids.shape != (topology.shape[0],):
         raise ValueError("topology must be [N, D] and condition_ids must be [N]")
@@ -293,7 +275,6 @@ def empirical_prior_kl(
     if groups.numel() <= 1:
         return topology.sum() * 0.0
 
-    # 损失第 3 项：用对角高斯的经验矩近似 q_phi(H|b) 与共享先验 p(H)。
     pooled_mean = topology.mean(dim=0).detach()
     pooled_variance = topology.var(dim=0, unbiased=False).clamp_min(eps).detach()
     terms = []

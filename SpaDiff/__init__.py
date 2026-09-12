@@ -17,7 +17,7 @@ from .denoising import (
 from .pipeline import SpaDiffPipeline
 from .multiomics import (
     build_spatially_regularized_connectivity,
-    robust_atac_lsi,
+    atac_lsi,
 )
 from .spadiff import SpaDiff
 from .spatial import (
@@ -27,7 +27,7 @@ from .spatial import (
     spatial_reconstruction,
 )
 from .topology import build_simplicial_operators, to_torch_operators
-from .train import TrainingResult, train_spadiff
+from .train import TrainingResult, train_paired_multiomics, train_spadiff
 
 __all__ = [
     "Neiber",
@@ -44,10 +44,11 @@ __all__ = [
     "build_spatially_regularized_connectivity",
     "inverse_pca_expression",
     "row_normalize_adjacency",
-    "robust_atac_lsi",
+    "atac_lsi",
     "smooth_generated_expression",
     "spatial_reconstruction",
     "to_torch_operators",
+    "train_paired_multiomics",
     "train_spadiff",
     "write_denoised_expression",
 ]

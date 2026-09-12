@@ -5,22 +5,6 @@ from dataclasses import dataclass
 
 @dataclass
 class SpaDiffConfig:
-    """Configuration for the paper-aligned SpaDiff implementation.
-
-    ``data_dim`` is the PCA/LSI target width. ``condition_input_dim`` is the
-    width of the feature matrix used to construct the fused simplicial
-    condition ``H``.  The batch variable from the paper is represented by the
-    joint ``(batch_id, modality_id)`` technical condition so that the same
-    objective also applies to multi-omics experiments.
-
-    ``dsm_weighting`` makes the paper's otherwise implicit time weighting
-    explicit:
-
-    - ``"score"``: literal unweighted score error in Eq. (18)/(19).
-    - ``"variance"``: variance-weighted score error, exactly epsilon-MSE.
-    - ``"likelihood"``: diffusion-squared likelihood weighting.
-
-    """
 
     data_dim: int = 50
     condition_input_dim: int = 50
@@ -38,21 +22,18 @@ class SpaDiffConfig:
     propagation_steps: int = 5
     propagation_alpha: float = 0.4
     learnable_propagation: bool = False
-    topology_residual: bool = True
-    topology_output_normalization: str = "feature"
+    topology_residual: bool = False
+    topology_output_normalization: str = "none" #"feature"
 
     num_batches: int = 1
     num_modalities: int = 1
 
-
     use_topology_condition: bool = True
     use_batch_condition: bool = True
 
-
-    dsm_weighting: str = "variance"
+    dsm_weighting: str = "score" #"variance"
     dsm_weight: float = 1.0
     batch_alignment_weight: float = 0.5
-
 
     batch_posterior_weight: float = 1.0
     prior_kl_weight: float = 1.0

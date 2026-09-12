@@ -1,18 +1,9 @@
-"""Backward-compatible wrapper for the former pipeline API."""
-
 from __future__ import annotations
 
 import warnings
 
 
 class SpaDiffPipeline:
-    """Deprecated adapter that forwards workflow calls to :class:`SpaDiff`.
-
-    New code should call ``model.fit_transform(...)`` directly. Keeping this
-    small adapter prevents existing scripts from breaking while maintaining a
-    single implementation of the high-level workflow on the model itself.
-    """
-
     def __init__(self, model):
         if not hasattr(model, "fit_transform"):
             raise TypeError("model must provide a fit_transform method")

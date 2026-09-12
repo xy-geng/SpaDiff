@@ -1,9 +1,3 @@
-"""Continuous SDE definitions adapted from score_sde_pytorch for [N, F] data.
-
-Reference design:
-https://github.com/yang-song/score_sde_pytorch/blob/main/sde_lib.py
-"""
-
 from __future__ import annotations
 
 import abc
@@ -17,7 +11,6 @@ ScoreFn = Callable[[Tensor, Tensor], Tensor]
 
 
 def expand_like(vector: Tensor, target: Tensor) -> Tensor:
-    """Append singleton dimensions until ``vector`` broadcasts over target."""
     return vector.reshape(vector.shape[0], *([1] * (target.ndim - 1)))
 
 
@@ -49,8 +42,6 @@ class SDE(abc.ABC):
 
 
 class ReverseSDE:
-    """Reverse-time SDE, or probability-flow ODE when requested."""
-
     def __init__(self, forward_sde: SDE, score_fn: ScoreFn, probability_flow: bool):
         self.forward_sde = forward_sde
         self.score_fn = score_fn
@@ -69,8 +60,6 @@ class ReverseSDE:
 
 
 class VPSDE(SDE):
-    """Variance-preserving SDE, the continuous limit of DDPM."""
-
     def __init__(
         self, beta_min: float = 0.1, beta_max: float = 20.0, num_scales: int = 1000
     ):

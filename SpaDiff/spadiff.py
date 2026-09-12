@@ -20,12 +20,6 @@ from .workflow import SpaDiffWorkflowMixin
 
 class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
     """Unified score model conditioned on fused topology and technical labels.
-
-    The VP forward perturbation kernel is condition-independent, as in standard
-    conditional diffusion.  The topology ``H`` and technical condition ``b``
-    parameterize the reverse score.  Batch/modality invariance of ``H`` is
-    learned through the SI distribution-ratio term implemented with an
-    adversarial technical-condition predictor.
     """
 
     def __init__(self, config: SpaDiffConfig):
@@ -117,15 +111,6 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
         condition_features: Optional[Tensor] = None,
     ) -> dict[str, Tensor]:
         """Evaluate the paper/SI-aligned joint training objective.
-
-        The returned ``loss`` has exactly three paper-level terms:
-
-        ``dsm_weight * DSM``
-        ``+ batch_alignment_weight * (L_ratio + batch_posterior_weight * L_q)``
-        ``+ prior_kl_weight * KL(q(H|b) || p(H))``.
-
-        ``L_q`` is an auxiliary sub-loss required to identify q_phi(b|x0),
-        rather than a fourth manuscript loss term.
         """
 
         if (
@@ -153,6 +138,96 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
             modality_ids,
         )
 
+    def encode_paired_multiomics(
+        self,
+        rna_features: Tensor,
+        atac_features: Tensor,
+        operators,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        """Encode paired RNA and ATAC views and return their exact mean.
+        """
+
+        if self.config.num_modalities != 2:
+            raise ValueError(
+                "paired RNA-ATAC integration requires num_modalities=2"
+            )
+        if self.config.data_dim != self.config.condition_input_dim:
+            raise ValueError(
+                "paired RNA-ATAC integration requires data_dim to equal "
+                "condition_input_dim"
+            )
+        expected_width = self.config.data_dim
+        for name, features in (
+            ("rna_features", rna_features),
+            ("atac_features", atac_features),
+        ):
+            if features.ndim != 2 or features.shape[1] != expected_width:
+                raise ValueError(
+                    f"{name} must have shape [N, {expected_width}]"
+                )
+            if not torch.isfinite(features).all():
+                raise ValueError(f"{name} must contain only finite values")
+        if rna_features.shape != atac_features.shape:
+            raise ValueError(
+                "paired RNA and ATAC features must have identical shapes"
+            )
+        if rna_features.device != atac_features.device:
+            raise ValueError("paired RNA and ATAC features must share a device")
+        if rna_features.dtype != atac_features.dtype:
+            raise ValueError("paired RNA and ATAC features must share a dtype")
+
+        topology_rna = self.encode_condition(rna_features, operators)
+        topology_atac = self.encode_condition(atac_features, operators)
+        topology_joint = 0.5 * (topology_rna + topology_atac)
+        return topology_rna, topology_atac, topology_joint
+
+    def paired_multiomics_loss(
+        self,
+        rna_features: Tensor,
+        atac_features: Tensor,
+        operators,
+        batch_ids: Tensor,
+    ) -> dict[str, Tensor]:
+        """Evaluate the joint objective for paired RNA and ATAC instances.
+        """
+
+        topology_rna, topology_atac, topology_joint = (
+            self.encode_paired_multiomics(
+                rna_features,
+                atac_features,
+                operators,
+            )
+        )
+        n_spots = rna_features.shape[0]
+        batch_ids = batch_ids.to(device=rna_features.device, dtype=torch.long)
+        if batch_ids.shape != (n_spots,):
+            raise ValueError(f"batch_ids must have shape [{n_spots}]")
+
+        all_features = torch.cat((rna_features, atac_features), dim=0)
+        all_topology = torch.cat((topology_rna, topology_atac), dim=0)
+        all_batch_ids = torch.cat((batch_ids, batch_ids), dim=0)
+        all_modality_ids = torch.cat(
+            (
+                torch.zeros(n_spots, dtype=torch.long, device=rna_features.device),
+                torch.ones(n_spots, dtype=torch.long, device=rna_features.device),
+            ),
+            dim=0,
+        )
+        output = self.loss_from_topology(
+            all_features,
+            all_topology,
+            all_batch_ids,
+            all_modality_ids,
+        )
+        output.update(
+            {
+                "topology_rna": topology_rna,
+                "topology_atac": topology_atac,
+                "topology_joint": topology_joint,
+            }
+        )
+        return output
+
     def loss_from_topology(
         self,
         target_features: Tensor,
@@ -161,11 +236,6 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
         modality_ids: Tensor,
     ) -> dict[str, Tensor]:
         """Evaluate the joint objective from an already encoded topology.
-
-        This entry point keeps the single-modality path unchanged while letting
-        paired multi-omics data encode RNA and ATAC independently on their shared
-        spatial graph before the two modality-specific representations are
-        optimized together.
         """
 
         if (
@@ -311,7 +381,6 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
         guidance_scale: float = 1.0,
         ode_steps: Optional[int] = 300,
     ) -> Tensor:
-        """Denoise observations under a chosen reference technical condition."""
 
         if not 0.0 < strength <= 1.0:
             raise ValueError("strength must lie in (0, 1]")

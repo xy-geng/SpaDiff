@@ -6,7 +6,6 @@ import numpy as np
 
 
 def row_normalize_adjacency(adjacency, *, remove_self_loops: bool = True):
-    """Return a sparse row-stochastic spatial adjacency matrix."""
 
     import scipy.sparse as sp
 
@@ -39,12 +38,6 @@ def smooth_generated_expression(
     alpha: float = 1.0,
     clip_nonnegative: bool = True,
 ):
-    """Apply the manuscript's post-generation ``X + alpha * A X`` smoothing.
-
-    ``A`` is always converted to a sparse row-normalized operator. This function
-    is intentionally independent of the existing training-time
-    :func:`SpaDiff.spatial.spatial_reconstruction` helper.
-    """
 
     import scipy.sparse as sp
 
@@ -88,7 +81,6 @@ def inverse_pca_expression(
     inverse_offset=None,
     clip_nonnegative: bool = True,
 ) -> np.ndarray:
-    """Map denoised PCA coordinates back into the modeled gene feature space."""
 
     scores = np.asarray(latent, dtype=np.float64)
     components = np.asarray(loadings, dtype=np.float64)
@@ -144,15 +136,6 @@ def write_denoised_expression(
     clip_nonnegative: bool = True,
     sparse_output: bool = False,
 ):
-    """Inverse-transform SpaDiff PCA features and write a denoised gene layer.
-
-    The default feature mean is calculated from ``adata.X``, which is correct
-    when Scanpy PCA was run on the current, unscaled expression matrix. If PCA
-    was fitted after gene-wise scaling, pass the corresponding inverse scale and
-    offset explicitly. When ``adjacency`` is supplied, spatial smoothing is
-    performed only after inverse PCA and non-negative truncation.
-    """
-
     import scipy.sparse as sp
 
     if latent_key not in adata.obsm:

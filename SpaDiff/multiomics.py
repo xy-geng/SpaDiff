@@ -1,4 +1,3 @@
-"""Preprocessing and graph helpers used by the case4 multi-omics workflow."""
 
 from __future__ import annotations
 
@@ -8,7 +7,6 @@ import numpy as np
 
 
 def standardize_columns(values, eps: float = 1e-6) -> np.ndarray:
-    """Standardize latent dimensions across spots."""
 
     array = np.asarray(values, dtype=np.float32)
     if array.ndim != 2:
@@ -24,7 +22,7 @@ def standardize_columns(values, eps: float = 1e-6) -> np.ndarray:
     return np.asarray(standardized, dtype=np.float32)
 
 
-def robust_atac_lsi(
+def atac_lsi(
     adata,
     *,
     n_components: int = 50,
@@ -33,7 +31,6 @@ def robust_atac_lsi(
     drop_depth_component: bool = True,
     random_state: int = 42,
 ) -> tuple[np.ndarray, dict]:
-    """Compute standardized TF-IDF/LSI features from raw ATAC counts."""
 
     import scipy.sparse as sp
     from sklearn.decomposition import TruncatedSVD

@@ -14,8 +14,6 @@ from .sde import SDE, expand_like
 
 
 def sinusoidal_time_embedding(t: Tensor, dim: int, max_period: int = 10_000) -> Tensor:
-    """Continuous-time positional embedding for t in [0, 1]."""
-    # 把连续扩散时刻 t 编码为正余弦向量，供分数网络使用。
     half = dim // 2
     frequencies = torch.exp(
         -math.log(max_period)
@@ -37,21 +35,16 @@ class FiLMResidualBlock(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, hidden_dim),
         )
-        # A near-identity start improves score-network stability.
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
 
     def forward(self, x: Tensor, condition: Tensor) -> Tensor:
-        # 用时间、批次和模态条件生成缩放/平移量，调制隐藏特征。
         scale, shift = self.to_scale_shift(condition).chunk(2, dim=-1)
         hidden = self.norm(x) * (1.0 + scale) + shift
         return x + self.net(hidden)
 
 
 class ConditionalScoreNetwork(nn.Module):
-    """Predict epsilon from (x_t, t, topology H, batch, modality).
-
-    """
 
     def __init__(
         self,
@@ -122,7 +115,6 @@ class ConditionalScoreNetwork(nn.Module):
             topology = torch.where(
                 drop_topology[:, None], self.null_topology.expand_as(topology), topology
             )
-        # 分别编码扩散时间 t、批次 b 和模态，再拼成 FiLM 条件。
         time = self.time_mlp(sinusoidal_time_embedding(t, self.time_embedding_dim))
         condition = torch.cat(
             (
@@ -132,7 +124,6 @@ class ConditionalScoreNetwork(nn.Module):
             ),
             dim=-1,
         )
-        # 把加噪数据 x_t 与融合拓扑表示 H 拼接后送入条件残差网络。
         hidden = self.input_projection(torch.cat((noisy, topology), dim=-1))
         for block in self.blocks:
             hidden = block(hidden, condition)
@@ -183,12 +174,9 @@ def conditional_dsm_loss(
     use_topology_condition: bool = True,
     use_batch_condition: bool = True,
 ) -> dict[str, Tensor]:
-    """Conditional continuous-time DSM with an explicit time weighting.
-    """
     weighting = weighting.lower()
     if weighting not in {"score", "variance", "likelihood"}:
         raise ValueError("weighting must be 'score', 'variance' or 'likelihood'")
-    # 损失第 1 项（DSM）：随机采样 t，并按 VP-SDE 的闭式扰动核构造 x_t。
     n = clean.shape[0]
     t = torch.rand(n, device=clean.device, dtype=clean.dtype) * (sde.T - eps) + eps
     noise = torch.randn_like(clean)
@@ -203,13 +191,11 @@ def conditional_dsm_loss(
         batch_probability=batch_dropout,
         modality_probability=modality_dropout,
     )
-    # 组件消融时使用模型预留的空条件，而不是把某个真实批次误当作空批次。
     if not use_topology_condition:
         topology_drop = torch.ones_like(topology_drop, dtype=torch.bool)
     if not use_batch_condition:
         null_batch, _ = model.null_labels(batch_ids)
         used_batch = null_batch
-    # 分数网络实际预测 epsilon；下面再用 s_theta=-epsilon_theta/std 转为分数。
     predicted_noise = model(
         perturbed,
         t,
@@ -220,13 +206,10 @@ def conditional_dsm_loss(
     )
     score = -predicted_noise / expand_like(std.clamp_min(1e-12), clean)
     feature_dims = tuple(range(1, clean.ndim))
-    # 真实条件分数为 grad log p(x_t|x_0)=-epsilon/std。
-    # 因此残差 s_theta-grad log p 等于 score+epsilon/std。
     score_residual = score + noise / expand_like(std.clamp_min(1e-12), clean)
     score_per_row = score_residual.square().mean(dim=feature_dims)
     noise_per_row = (predicted_noise - noise).square().mean(dim=feature_dims)
 
-    # score 对应式 (18)/(19) 的形式；variance 等价于稳定的 epsilon-MSE。
     if weighting == "score":
         per_row = score_per_row
     elif weighting == "likelihood":
@@ -235,7 +218,6 @@ def conditional_dsm_loss(
     else:
         per_row = noise_per_row
 
-    # 多切片/多模态时先在每个技术组内求均值，再对组等权平均，避免大切片支配损失。
     if loss_group_ids is None:
         loss = per_row.mean()
     else:
@@ -260,11 +242,6 @@ def make_score_fn(
     use_topology_condition: bool = True,
     use_batch_condition: bool = True,
 ):
-    """Wrap epsilon prediction as a true conditional score function.
-
-    This mirrors score_sde_pytorch/models/utils.py::get_score_fn, while also
-    binding SpaDiff's topology, batch and modality conditions.
-    """
     if guidance_target not in ("all", "labels"):
         raise ValueError("guidance_target must be 'all' or 'labels'")
 

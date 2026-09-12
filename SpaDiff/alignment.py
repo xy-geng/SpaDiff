@@ -9,7 +9,6 @@ import numpy as np
 
 @dataclass(frozen=True)
 class SliceAffineTransform:
-    """Global affine map from one slice into the reference coordinate system."""
 
     source_index: int
     reference_index: int
@@ -26,7 +25,6 @@ class SliceAffineTransform:
 
 @dataclass(frozen=True)
 class SerialAlignmentResult:
-    """Aligned slice copies and diagnostics from :func:`align_serial_slices`."""
 
     slices: tuple[Any, ...]
     selected_genes: tuple[str, ...]
@@ -320,21 +318,6 @@ def align_serial_slices(
     min_region_spots: int = 4,
     copy: bool = True,
 ) -> SerialAlignmentResult:
-    """Align serial slices using the manuscript's Moran-centroid linear map.
-
-    Each slice is partitioned by evenly spaced x/y grid lines. Gene-wise Moran's
-    I is evaluated within every sufficiently populated subregion, and the genes
-    with the largest variance across all subregions and slices are retained as
-    spatial anchors. Expression-weighted gene centroids are then mapped into the
-    reference slice by one global affine layer with no nonlinear activation.
-
-    For the strict paper workflow, provide SpaGCN-derived weights either through
-    ``spatial_weights`` or ``adata.obsp[spatial_weight_key]``. When neither is
-    available, the function emits a warning and uses coordinate-kNN weights so
-    that the preprocessing step remains usable without a SpaGCN dependency.
-    The returned transforms map every target slice into the fixed reference
-    coordinate system and never apply local nonlinear warping.
-    """
 
     slices = tuple(slices)
     if len(slices) < 2:

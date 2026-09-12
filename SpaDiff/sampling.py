@@ -1,4 +1,3 @@
-"""Probability-flow sampler used by every tutorial."""
 
 from __future__ import annotations
 
@@ -30,10 +29,6 @@ def probability_flow_sample(
     use_batch_condition: bool = True,
 ) -> Tensor:
     """Deterministic Heun solver for the probability-flow ODE.
-
-    This avoids adding SciPy/torchdiffeq as a mandatory dependency. It is a
-    fixed-step reference implementation; use an adaptive ODE solver for
-    likelihood work.
     """
     score_fn = make_score_fn(
         model,

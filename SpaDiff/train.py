@@ -65,14 +65,10 @@ class TrainingResult:
     stopped_early: bool = False
 
 
-def train_spadiff(
+def _train_with_loss(
     model,
-    target_features: Tensor,
-    operators,
-    batch_ids: Tensor,
-    modality_ids: Tensor,
+    loss_evaluator: Callable[[], dict[str, Tensor]],
     *,
-    condition_features: Optional[Tensor] = None,
     epochs: int = 500,
     learning_rate: float = 1e-3,
     weight_decay: float = 1e-4,
@@ -83,7 +79,7 @@ def train_spadiff(
     checkpoint_epochs: Optional[Sequence[int]] = None,
     checkpoint_callback: Optional[Callable[[object, int, dict], bool | None]] = None,
 ) -> TrainingResult:
-    """Optimize the DSM, batch-ratio and optional latent-prior terms.
+    """Optimize SpaDiff using a workflow-specific loss evaluator.
 
     There is intentionally no clustering-driven early stop: the manuscript
     specifies diffusion training for 500 epochs, and a downstream clustering
@@ -138,14 +134,7 @@ def train_spadiff(
     )
     try:
         for epoch in iterator:
-
-            output = model.loss(
-                target_features,
-                operators,
-                batch_ids,
-                modality_ids,
-                condition_features=condition_features,
-            )
+            output = loss_evaluator()
 
             loss = output["loss"]
             if not torch.isfinite(loss):
@@ -224,4 +213,84 @@ def train_spadiff(
         prior_kl_losses=prior_history,
         diagnostics=diagnostics,
         stopped_early=stopped_early,
+    )
+
+
+def train_spadiff(
+    model,
+    target_features: Tensor,
+    operators,
+    batch_ids: Tensor,
+    modality_ids: Tensor,
+    *,
+    condition_features: Optional[Tensor] = None,
+    epochs: int = 500,
+    learning_rate: float = 1e-3,
+    weight_decay: float = 1e-4,
+    grad_clip: Optional[float] = 1.0,
+    ema_decay: Optional[float] = 0.990,
+    verbose_every: Optional[int] = None,
+    progress: bool = True,
+    checkpoint_epochs: Optional[Sequence[int]] = None,
+    checkpoint_callback: Optional[Callable[[object, int, dict], bool | None]] = None,
+) -> TrainingResult:
+    """Optimize the standard single-matrix SpaDiff workflow."""
+
+    return _train_with_loss(
+        model,
+        lambda: model.loss(
+            target_features,
+            operators,
+            batch_ids,
+            modality_ids,
+            condition_features=condition_features,
+        ),
+        epochs=epochs,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        grad_clip=grad_clip,
+        ema_decay=ema_decay,
+        verbose_every=verbose_every,
+        progress=progress,
+        checkpoint_epochs=checkpoint_epochs,
+        checkpoint_callback=checkpoint_callback,
+    )
+
+
+def train_paired_multiomics(
+    model,
+    rna_features: Tensor,
+    atac_features: Tensor,
+    operators,
+    batch_ids: Tensor,
+    *,
+    epochs: int = 500,
+    learning_rate: float = 1e-3,
+    weight_decay: float = 1e-4,
+    grad_clip: Optional[float] = 1.0,
+    ema_decay: Optional[float] = 0.990,
+    verbose_every: Optional[int] = None,
+    progress: bool = True,
+    checkpoint_epochs: Optional[Sequence[int]] = None,
+    checkpoint_callback: Optional[Callable[[object, int, dict], bool | None]] = None,
+) -> TrainingResult:
+    """Optimize paired RNA and ATAC views with separate encoder passes."""
+
+    return _train_with_loss(
+        model,
+        lambda: model.paired_multiomics_loss(
+            rna_features,
+            atac_features,
+            operators,
+            batch_ids,
+        ),
+        epochs=epochs,
+        learning_rate=learning_rate,
+        weight_decay=weight_decay,
+        grad_clip=grad_clip,
+        ema_decay=ema_decay,
+        verbose_every=verbose_every,
+        progress=progress,
+        checkpoint_epochs=checkpoint_epochs,
+        checkpoint_callback=checkpoint_callback,
     )

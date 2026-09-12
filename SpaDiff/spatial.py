@@ -1,5 +1,3 @@
-"""Spatial graph and topology utilities for aligned tissue coordinates."""
-
 from __future__ import annotations
 
 import warnings
@@ -56,7 +54,6 @@ def _build_global_knn_adjacency(
     *,
     n_neighbors: int,
 ):
-    """Reproduce the tutorial's all-spots kNN construction."""
 
     from sklearn.neighbors import NearestNeighbors
 
@@ -105,7 +102,6 @@ def _build_slice_aware_adjacency(
     k_intra: int,
     k_inter: int,
 ):
-    """Build the legacy within-slice and consecutive-slice graph exactly."""
 
     import scipy.sparse as sp
     from sklearn.neighbors import NearestNeighbors
@@ -183,11 +179,6 @@ def build_spatial_topology(
     verbose: bool = True,
 ) -> SpatialTopologyResult:
     """Build a spatial graph and its node-level simplicial operators.
-
-    ``slice_aware`` preserves the legacy multi-slice construction: kNN edges
-    are built within slices and between each consecutive pair in
-    ``slice_order``. ``global_knn`` builds one kNN graph across all coordinates.
-    Both modes return a symmetric CSR graph with an empty diagonal.
     """
 
     normalized_mode = str(mode).lower()

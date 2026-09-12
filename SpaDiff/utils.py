@@ -27,7 +27,6 @@ def mclust_R(
     pca_num=30,
     random_seed=200,
 ):
-    """Preserved optional R/mclust bridge with safe PCA dimensionality."""
     from sklearn.decomposition import PCA
 
     values = np.asarray(adata.obsm[used_obsm])
@@ -74,8 +73,7 @@ def _adjust_clustering_resolution(
     neighbors_key=None,
     clustering_kwargs=None,
 ):
-    """Tune a graph-clustering resolution toward a requested cluster count.
-    """
+
     import scanpy as sc
 
     if isinstance(target_n_clusters, bool) or not isinstance(
@@ -225,7 +223,6 @@ def adjust_louvain_resolution(
     neighbors_key=None,
     clustering_kwargs=None,
 ):
-    """Run Louvain while tuning resolution toward ``target_n_clusters``."""
     import scanpy as sc
 
     if verbose:
