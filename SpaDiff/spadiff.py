@@ -19,8 +19,6 @@ from .workflow import SpaDiffWorkflowMixin
 
 
 class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
-    """Unified score model conditioned on fused topology and technical labels.
-    """
 
     def __init__(self, config: SpaDiffConfig):
         super().__init__()
@@ -110,8 +108,6 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
         *,
         condition_features: Optional[Tensor] = None,
     ) -> dict[str, Tensor]:
-        """Evaluate the paper/SI-aligned joint training objective.
-        """
 
         if (
             target_features.ndim != 2
@@ -144,8 +140,6 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
         atac_features: Tensor,
         operators,
     ) -> tuple[Tensor, Tensor, Tensor]:
-        """Encode paired RNA and ATAC views and return their exact mean.
-        """
 
         if self.config.num_modalities != 2:
             raise ValueError(
@@ -188,8 +182,6 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
         operators,
         batch_ids: Tensor,
     ) -> dict[str, Tensor]:
-        """Evaluate the joint objective for paired RNA and ATAC instances.
-        """
 
         topology_rna, topology_atac, topology_joint = (
             self.encode_paired_multiomics(
@@ -235,8 +227,6 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
         batch_ids: Tensor,
         modality_ids: Tensor,
     ) -> dict[str, Tensor]:
-        """Evaluate the joint objective from an already encoded topology.
-        """
 
         if (
             target_features.ndim != 2
@@ -336,7 +326,6 @@ class SpaDiff(SpaDiffWorkflowMixin, nn.Module):
         guidance_target: str = "all",
         ode_steps: Optional[int] = None,
     ) -> Tensor:
-        """Generate target PCA/LSI features from topology/source conditions."""
 
         was_training = self.training
         try:

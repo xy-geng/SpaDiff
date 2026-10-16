@@ -1,5 +1,3 @@
-"""Higher-order topology encoder and technical objectives."""
-
 from __future__ import annotations
 
 from typing import Mapping, Sequence
@@ -174,10 +172,6 @@ def gradient_reverse(value: Tensor, strength: float = 1.0) -> Tensor:
 
 
 class TechnicalConditionObjective(nn.Module):
-    """Operational form of the SI q(b|x0) / p(b|H) alignment term.
-
-    """
-
     def __init__(
         self,
         data_dim: int,

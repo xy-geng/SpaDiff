@@ -122,7 +122,6 @@ def build_spatially_regularized_connectivity(
     neighbors_key: str = "spadiff",
     output_key: str = "spadiff_spatial_connectivities",
 ):
-    """Mix a latent-neighbor graph with a binary spatial graph."""
 
     import scanpy as sc
     import scipy.sparse as sp

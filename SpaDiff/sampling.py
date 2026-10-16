@@ -28,8 +28,6 @@ def probability_flow_sample(
     use_topology_condition: bool = True,
     use_batch_condition: bool = True,
 ) -> Tensor:
-    """Deterministic Heun solver for the probability-flow ODE.
-    """
     score_fn = make_score_fn(
         model,
         sde,

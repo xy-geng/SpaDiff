@@ -1,5 +1,3 @@
-"""Conditional score network and denoising score-matching objective."""
-
 from __future__ import annotations
 
 import math
@@ -140,7 +138,6 @@ def apply_condition_dropout(
     batch_probability: float,
     modality_probability: float,
 ) -> tuple[Tensor, Tensor, Tensor]:
-    """Independently drop H, batch and modality for classifier-free guidance."""
     n = batch_ids.shape[0]
     device = batch_ids.device
     joint_drop = torch.rand(n, device=device) < joint_probability

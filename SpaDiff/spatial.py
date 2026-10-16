@@ -14,8 +14,6 @@ TopologyMode = Literal["slice_aware", "global_knn"]
 
 @dataclass(frozen=True)
 class SpatialTopologyResult:
-    """Spatial graph and higher-order operators produced by one build call."""
-
     coordinates: np.ndarray
     adjacency: Any
     operators: dict[int, Any]
@@ -178,8 +176,6 @@ def build_spatial_topology(
     device=None,
     verbose: bool = True,
 ) -> SpatialTopologyResult:
-    """Build a spatial graph and its node-level simplicial operators.
-    """
 
     normalized_mode = str(mode).lower()
     if normalized_mode not in {"slice_aware", "global_knn"}:
@@ -222,7 +218,6 @@ def spatial_reconstruction(
     n_pcs: int = 15,
     use_highly_variable: Optional[bool] = None,
 ):
-    """Smooth expression over a single all-spots spatial kNN graph."""
 
     if alpha < 0.0:
         raise ValueError("alpha must be non-negative")
@@ -265,7 +260,6 @@ def Neiber(
     spatial_key: str = "spatial",
     batch_key: str = "batch_name",
 ):
-    """Compatibility wrapper for the legacy multi-slice neighbor builder."""
 
     warnings.warn(
         "Neiber is deprecated; use build_spatial_topology(mode='slice_aware')",

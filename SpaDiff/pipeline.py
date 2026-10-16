@@ -16,7 +16,6 @@ class SpaDiffPipeline:
         self.model = model
 
     def fit_transform(self, *args, **kwargs):
-        """Forward to the wrapped model's unified workflow."""
 
         return self.model.fit_transform(*args, **kwargs)
 

@@ -1,5 +1,3 @@
-"""Internal AnnData workflow mixed into the public SpaDiff model."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence

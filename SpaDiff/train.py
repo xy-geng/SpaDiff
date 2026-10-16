@@ -10,7 +10,6 @@ from tqdm.auto import tqdm
 
 
 class ExponentialMovingAverage:
-    """EMA utility for stable score-model sampling."""
 
     def __init__(self, parameters, decay: float = 0.999):
         if not 0.0 <= decay < 1.0:
@@ -79,12 +78,6 @@ def _train_with_loss(
     checkpoint_epochs: Optional[Sequence[int]] = None,
     checkpoint_callback: Optional[Callable[[object, int, dict], bool | None]] = None,
 ) -> TrainingResult:
-    """Optimize SpaDiff using a workflow-specific loss evaluator.
-
-    There is intentionally no clustering-driven early stop: the manuscript
-    specifies diffusion training for 500 epochs, and a downstream clustering
-    criterion must not terminate score learning.
-    """
 
     if epochs <= 0:
         raise ValueError("epochs must be positive")
@@ -234,7 +227,6 @@ def train_spadiff(
     checkpoint_epochs: Optional[Sequence[int]] = None,
     checkpoint_callback: Optional[Callable[[object, int, dict], bool | None]] = None,
 ) -> TrainingResult:
-    """Optimize the standard single-matrix SpaDiff workflow."""
 
     return _train_with_loss(
         model,
@@ -274,7 +266,6 @@ def train_paired_multiomics(
     checkpoint_epochs: Optional[Sequence[int]] = None,
     checkpoint_callback: Optional[Callable[[object, int, dict], bool | None]] = None,
 ) -> TrainingResult:
-    """Optimize paired RNA and ATAC views with separate encoder passes."""
 
     return _train_with_loss(
         model,

@@ -11,7 +11,6 @@ Simplex = Tuple[int, ...]
 
 
 def _undirected_neighbors(adjacency) -> List[set[int]]:
-    """Symmetrize an adjacency matrix and return neighbors without self-loops."""
     if hasattr(adjacency, "tocsr"):
         matrix = adjacency.tocsr().maximum(adjacency.T.tocsr()).tolil()
         matrix.setdiag(0)
@@ -31,12 +30,6 @@ def _undirected_neighbors(adjacency) -> List[set[int]]:
 
 
 def enumerate_simplices(adjacency, max_order: int = 2) -> Dict[int, List[Simplex]]:
-    """Enumerate edges and clique-induced higher-order simplices.
-
-    The manuscript experiments use orders 1 and 2. Higher orders are supported
-    for small graphs via clique expansion, but should be used carefully because
-    the number of cliques can grow rapidly.
-    """
     if max_order < 1:
         raise ValueError("max_order must be at least 1")
     neighbors = _undirected_neighbors(adjacency)
@@ -45,8 +38,6 @@ def enumerate_simplices(adjacency, max_order: int = 2) -> Dict[int, List[Simplex
     if max_order == 1:
         return result
 
-    # Build larger cliques incrementally. This keeps the original triangle
-    # intention while avoiding the unconditional _D[2] access in creat_L2.
     previous = edges
     for order in range(2, max_order + 1):
         current: List[Simplex] = []
@@ -63,7 +54,6 @@ def enumerate_simplices(adjacency, max_order: int = 2) -> Dict[int, List[Simplex
 def normalized_node_simplex_operator(
     num_nodes: int, simplices: Sequence[Simplex], order: int
 ):
-    """Return A_p = D_v^-1/2 C_p D_s^-1 C_p^T D_v^-1/2 as CSR."""
     import scipy.sparse as sp
 
     simplex_size = order + 1
@@ -93,9 +83,6 @@ def build_simplicial_operators(
     verbose: bool = True,
     return_counts: bool = False,
 ):
-    """Build simplicial operators and report the number of simplices per order.
-
-    """
     import scipy.sparse as sp
 
     if max_order < 0:
@@ -138,7 +125,6 @@ def build_simplicial_operators(
 
 
 def scipy_to_torch_sparse(matrix, device=None):
-    """Convert scipy sparse matrix to coalesced torch COO."""
     import torch
 
     coo = matrix.tocoo()
@@ -150,7 +136,6 @@ def scipy_to_torch_sparse(matrix, device=None):
 
 
 def to_torch_operators(operators, device=None):
-    """Convert an order-keyed scipy operator mapping to torch sparse tensors."""
     return {
         order: scipy_to_torch_sparse(op, device=device)
         for order, op in operators.items()

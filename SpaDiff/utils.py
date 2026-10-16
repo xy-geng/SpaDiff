@@ -143,8 +143,6 @@ def _adjust_clustering_resolution(
         labels = adata.obs[key_added].copy()
         record = {"resolution": float(resolution), "n_clusters": n_clusters}
         history.append(record)
-        # Prefer the smallest error; on equal error retain a non-undershooting
-        # partition, then the lower resolution for a conservative solution.
         rank = (
             abs(n_clusters - target_n_clusters),
             n_clusters < target_n_clusters,
